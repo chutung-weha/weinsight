@@ -1,0 +1,216 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── ENUMS ───────────────────────────────────────────────
+
+enum Role {
+  CANDIDATE // Nhân sự làm test
+  HR        // Quản lý tuyển dụng
+  ADMIN     // Quản trị hệ thống
+}
+
+enum TestType {
+  DISC
+  LOGIC
+  SITUATION
+}
+
+enum SessionStatus {
+  IN_PROGRESS
+  COMPLETED
+  ABANDONED
+}
+
+enum DocStatus {
+  UPLOADING
+  PROCESSING // Đang parse/chunk cho RAG
+  READY
+  FAILED
+}
+
+enum AITone {
+  DIRECT // Thẳng thắn
+  GENTLE // Nhẹ nhàng
+  COACH  // Coaching style
+}
+
+enum AIObjective {
+  RECRUITMENT // Tuyển dụng
+  TRAINING    // Đào tạo
+  EVALUATION  // Đánh giá
+}
+
+// ─── USER ────────────────────────────────────────────────
+
+model User {
+  id             String   @id @default(cuid())
+  email          String   @unique
+  name           String
+  passwordHash   String
+  role           Role     @default(CANDIDATE)
+  department     String?  // Phòng ban (dùng để filter trên admin dashboard)
+  avatarUrl      String?
+  active         Boolean  @default(true)
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  testSessions   TestSession[]
+  knowledgeDocs  KnowledgeDoc[]  // Docs uploaded by this admin/HR
+
+  @@map("users")
+}
+
+// ─── QUESTION BANK ───────────────────────────────────────
+// Một bảng Question chung cho cả 3 loại test.
+// `scores` là JSON vì cấu trúc điểm khác nhau:
+//   DISC:      { "D": 4, "I": 1, "S": 0, "C": 1 }
+//   LOGIC:     { "correct": true, "points": 10 }
+//   SITUATION: { "leadership": 3, "teamwork": 2, "communication": 4 }
+
+model Question {
+  id        String   @id @default(cuid())
+  testType  TestType
+  content   String   // Nội dung câu hỏi
+  order     Int      // Thứ tự hiển thị
+  active    Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  answers     Answer[]
+  testAnswers TestAnswer[]
+
+  @@unique([testType, order]) // Không trùng thứ tự trong cùng loại test
+  @@index([testType, active])
+  @@map("questions")
+}
+
+model Answer {
+  id         String @id @default(cuid())
+  questionId String
+  text       String // Nội dung đáp án
+  order      Int    // Thứ tự hiển thị (a, b, c, d)
+  scores     Json   // Điểm mapping — cấu trúc tùy testType (xem comment trên)
+
+  question    Question     @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  testAnswers TestAnswer[]
+
+  @@index([questionId])
+  @@map("answers")
+}
+
+// ─── TEST SESSION (mỗi lần user làm test) ────────────────
+
+model TestSession {
+  id        String        @id @default(cuid())
+  userId    String
+  testType  TestType
+  status    SessionStatus @default(IN_PROGRESS)
+
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  // Điểm tổng hợp sau khi hoàn thành — JSON vì cấu trúc khác nhau per testType
+  // DISC:      { "D": 18, "I": 12, "S": 8, "C": 15 }
+  // LOGIC:     { "correct": 12, "total": 15, "points": 85 }
+  // SITUATION: { "leadership": 22, "teamwork": 18, ... }
+  totalScores Json?
+
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  answers    TestAnswer[]
+  aiInsights AIInsight[]
+
+  @@index([userId, testType])
+  @@index([status])
+  @@map("test_sessions")
+}
+
+// Lưu từng câu trả lời của user — để admin review chi tiết
+model TestAnswer {
+  id         String @id @default(cuid())
+  sessionId  String
+  questionId String
+  answerId   String
+
+  answeredAt DateTime @default(now())
+
+  session  TestSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  question Question    @relation(fields: [questionId], references: [id])
+  answer   Answer      @relation(fields: [answerId], references: [id])
+
+  @@unique([sessionId, questionId]) // Mỗi câu chỉ trả lời 1 lần per session
+  @@map("test_answers")
+}
+
+// ─── AI INSIGHT (tách riêng — hỗ trợ re-analyze) ─────────
+// 1 session có thể có nhiều insight (khi admin đổi prompt/thêm knowledge)
+
+model AIInsight {
+  id        String @id @default(cuid())
+  sessionId String
+
+  // Kết quả AI trả về — structured
+  summary       String  // Tóm tắt ngắn
+  strengths     Json    // ["Ra quyết định nhanh", ...]
+  improvements  Json    // ["Cần lắng nghe hơn", ...]
+  suitableRoles Json    // ["Team Lead", "Project Manager"]
+  recommendation String // Khuyến nghị hành động
+  fullResponse   String // Raw AI response (backup)
+
+  // Config snapshot tại thời điểm analyze — để biết insight này dùng config nào
+  tone      AITone      @default(DIRECT)
+  objective AIObjective @default(EVALUATION)
+
+  createdAt DateTime @default(now())
+
+  session TestSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@map("ai_insights")
+}
+
+// ─── KNOWLEDGE BASE (RAG) ────────────────────────────────
+
+model KnowledgeDoc {
+  id           String    @id @default(cuid())
+  fileName     String
+  fileUrl      String    // URL lưu trữ (UploadThing hoặc local)
+  fileSize     Int       // bytes
+  mimeType     String    // application/pdf, application/msword, text/plain
+  status       DocStatus @default(UPLOADING)
+  chunkCount   Int       @default(0) // Số chunk đã parse cho RAG
+  errorMessage String?
+
+  uploadedById String
+  uploadedBy   User   @relation(fields: [uploadedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@map("knowledge_docs")
+}
+
+// ─── AI CONFIG (global settings) ──────────────────────────
+// Chỉ có 1 record active — admin update chứ không tạo mới
+
+model AIConfig {
+  id            String      @id @default(cuid())
+  tone          AITone      @default(DIRECT)
+  objective     AIObjective @default(EVALUATION)
+  customPrompt  String?     // Prompt tùy chỉnh của admin
+  active        Boolean     @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("ai_configs")
+}

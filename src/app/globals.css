@@ -1,26 +1,171 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* ===== WE INSIGHT — Liquid Glass Design System ===== */
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-background: #0B1120;
+  --color-foreground: #F1F5F9;
+  --color-cyan: #06B6D4;
+  --color-cyan-light: #22D3EE;
+  --color-cyan-glow: #00D4FF;
+  --color-teal: #14B8A6;
+  --color-violet: #7C3AED;
+  --color-blue: #2563EB;
+  --color-dark-bg: #0B1120;
+  --color-dark-card: #111827;
+  --color-glass: rgba(255,255,255,0.06);
+  --color-glass-border: rgba(255,255,255,0.1);
+  --color-glass-hover: rgba(255,255,255,0.1);
+  --color-text: #F1F5F9;
+  --color-text-dim: #94A3B8;
+  --color-text-muted: #64748B;
+
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-logo: 'Be Vietnam Pro', sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+/* Base */
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-dark-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
 }
+
+/* ===== Glass Components ===== */
+.glass {
+  background: var(--color-glass);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--color-glass-border);
+  border-radius: 20px;
+}
+
+.glass-sm {
+  background: var(--color-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--color-glass-border);
+  border-radius: 14px;
+}
+
+.glass-hover {
+  transition: all 0.4s ease;
+}
+.glass-hover:hover {
+  background: var(--color-glass-hover);
+  border-color: rgba(6,182,212,0.2);
+  box-shadow: 0 8px 40px rgba(6,182,212,0.08);
+  transform: translateY(-3px);
+}
+
+/* ===== Gradient Helpers ===== */
+.gradient-text {
+  background: linear-gradient(135deg, #2DD4BF, #00D4FF, #06B6D4);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gradient-text-violet {
+  background: linear-gradient(135deg, #06B6D4, #7C3AED);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gradient-bg {
+  background: linear-gradient(135deg, #2DD4BF, #00D4FF, #06B6D4);
+}
+
+/* ===== Background Orbs ===== */
+.bg-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  pointer-events: none;
+}
+
+/* ===== Scroll Animations ===== */
+.reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  transition: opacity 0.7s ease, transform 0.7s ease;
+}
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.reveal-left {
+  opacity: 0;
+  transform: translateX(-30px);
+  transition: opacity 0.7s ease, transform 0.7s ease;
+}
+.reveal-left.visible {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.reveal-right {
+  opacity: 0;
+  transform: translateX(30px);
+  transition: opacity 0.7s ease, transform 0.7s ease;
+}
+.reveal-right.visible {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* Stagger delays */
+.d1 { transition-delay: 0.1s; }
+.d2 { transition-delay: 0.2s; }
+.d3 { transition-delay: 0.3s; }
+.d4 { transition-delay: 0.4s; }
+
+/* ===== Button Styles ===== */
+.btn-glow {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0B1120;
+  padding: 9px 22px;
+  border-radius: 50px;
+  transition: all 0.3s ease;
+}
+.btn-glow:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 24px rgba(6,182,212,0.35);
+}
+
+.btn-ghost {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-dim);
+  padding: 8px 18px;
+  border-radius: 50px;
+  border: 1px solid var(--color-glass-border);
+  transition: all 0.3s ease;
+}
+.btn-ghost:hover {
+  color: var(--color-cyan-light);
+  border-color: rgba(6,182,212,0.3);
+  background: rgba(6,182,212,0.05);
+  transform: translateY(-1px);
+}
+
+/* ===== Score Bars ===== */
+.bar-track {
+  height: 6px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 1s ease;
+}
+
+/* Smooth scroll */
+html { scroll-behavior: smooth; }
