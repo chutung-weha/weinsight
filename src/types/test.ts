@@ -1,10 +1,10 @@
 export type {
-  Question,
-  Answer,
-  TestSession,
-  TestAnswer,
-} from "@/generated/prisma";
-export { TestType, SessionStatus } from "@/generated/prisma";
+  QuestionModel as Question,
+  AnswerModel as Answer,
+  TestSessionModel as TestSession,
+  TestAnswerModel as TestAnswer,
+} from "@/generated/prisma/models";
+export { TestType, SessionStatus } from "@/generated/prisma/enums";
 
 // Typed score structures (Prisma stores as Json, these give type safety at app level)
 

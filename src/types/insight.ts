@@ -1,6 +1,6 @@
 export type {
-  AIInsight,
-  AIConfig,
-  KnowledgeDoc,
-} from "@/generated/prisma";
-export { AITone, AIObjective, DocStatus } from "@/generated/prisma";
+  AIInsightModel as AIInsight,
+  AIConfigModel as AIConfig,
+  KnowledgeDocModel as KnowledgeDoc,
+} from "@/generated/prisma/models";
+export { AITone, AIObjective, DocStatus } from "@/generated/prisma/enums";

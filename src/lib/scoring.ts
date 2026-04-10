@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import type { TestType } from "@/generated/prisma";
+import type { TestType } from "@/generated/prisma/enums";
 
 export interface ScoreMeta {
   maxScores: Record<string, number>;

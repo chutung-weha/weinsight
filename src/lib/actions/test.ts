@@ -10,7 +10,7 @@ import {
   type SubmitAnswerInput,
   type CompleteTestInput,
 } from "@/lib/validations/test";
-import type { TestType } from "@/generated/prisma";
+import type { TestType } from "@/generated/prisma/enums";
 import { generateInsight } from "@/lib/ai/generate-insight";
 
 export async function startTest(data: StartTestInput) {
