@@ -51,7 +51,11 @@ export async function GET(
     );
   }
 
-  const { maxScores, questionCount } = await computeScoreMeta(testSession.testType);
+  // Numerology không có questions — skip score meta computation
+  const isNumerology = testSession.testType === "NUMEROLOGY";
+  const { maxScores, questionCount } = isNumerology
+    ? { maxScores: {}, questionCount: 0 }
+    : await computeScoreMeta(testSession.testType);
 
   return NextResponse.json({
     success: true,

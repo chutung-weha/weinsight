@@ -1,7 +1,7 @@
 import { z } from "zod/v4";
 
 export const startTestSchema = z.object({
-  testType: z.enum(["DISC", "LOGIC", "SITUATION"]),
+  testType: z.enum(["DISC", "LOGIC", "SITUATION", "NUMEROLOGY"]),
 });
 
 export const submitAnswerSchema = z.object({

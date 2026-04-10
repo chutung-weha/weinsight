@@ -26,3 +26,5 @@ export interface SituationScores {
   communication: number;
   problemSolving: number;
 }
+
+export type { NumerologyResult as NumerologyScores } from "@/types/numerology";

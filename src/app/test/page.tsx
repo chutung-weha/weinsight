@@ -126,6 +126,35 @@ export default function TestSelectionPage() {
               </div>
             ))}
           </div>
+
+          {/* Công cụ khác */}
+          <div className="mt-14">
+            <p className="text-xs font-semibold tracking-[2px] uppercase text-amber-400 mb-5">Công cụ khác</p>
+            <Link
+              href="/than-so-hoc"
+              className="glass glass-hover group p-8 flex items-center gap-6"
+            >
+              <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-amber-500/10 text-amber-400 shrink-0">
+                <svg className="w-7 h-7" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 15.75V18m-7.5-6.75h.008v.008H8.25v-.008Zm0 2.25h.008v.008H8.25v-.008Zm0 2.25h.008v.008H8.25v-.008Zm0 2.25h.008v.008H8.25v-.008Zm2.498-6.75h.007v.008h-.007v-.008Zm0 2.25h.007v.008h-.007v-.008Zm0 2.25h.007v.008h-.007v-.008Zm0 2.25h.007v.008h-.007v-.008Zm2.504-6.75h.008v.008h-.008v-.008Zm0 2.25h.008v.008h-.008v-.008Zm0 2.25h.008v.008h-.008v-.008Zm0 2.25h.008v.008h-.008v-.008Zm2.498-6.75h.008v.008h-.008v-.008Zm0 2.25h.008v.008h-.008v-.008ZM8.25 6h7.5v2.25h-7.5V6ZM12 2.25c-1.892 0-3.758.11-5.593.322C5.307 2.7 4.5 3.65 4.5 4.757V19.5a2.25 2.25 0 002.25 2.25h10.5a2.25 2.25 0 002.25-2.25V4.757c0-1.108-.806-2.057-1.907-2.185A48.507 48.507 0 0012 2.25Z" />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <h2 className="text-xl font-bold">Thần số học</h2>
+                  <span className="text-xs font-medium text-slate-500 bg-white/5 px-2 py-0.5 rounded-full">Pythagoras</span>
+                </div>
+                <p className="text-sm text-slate-400 leading-relaxed">
+                  Khám phá số chủ đạo, sứ mệnh, linh hồn, nhân cách... từ họ tên và ngày sinh của bạn.
+                </p>
+              </div>
+              <div className="text-slate-600 group-hover:text-amber-400 transition-colors shrink-0">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+                </svg>
+              </div>
+            </Link>
+          </div>
         </div>
       </section>
       <Footer />
