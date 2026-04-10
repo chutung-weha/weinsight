@@ -2,5 +2,5 @@ export type {
   AIInsight,
   AIConfig,
   KnowledgeDoc,
-} from "@prisma/client";
-export { AITone, AIObjective, DocStatus } from "@prisma/client";
+} from "@/generated/prisma";
+export { AITone, AIObjective, DocStatus } from "@/generated/prisma";

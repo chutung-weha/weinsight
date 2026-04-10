@@ -3,8 +3,8 @@ export type {
   Answer,
   TestSession,
   TestAnswer,
-} from "@prisma/client";
-export { TestType, SessionStatus } from "@prisma/client";
+} from "@/generated/prisma";
+export { TestType, SessionStatus } from "@/generated/prisma";
 
 // Typed score structures (Prisma stores as Json, these give type safety at app level)
 

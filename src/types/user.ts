@@ -1,2 +1,2 @@
-export { Role } from "@prisma/client";
-export type { User } from "@prisma/client";
+export { Role } from "@/generated/prisma";
+export type { User } from "@/generated/prisma";
