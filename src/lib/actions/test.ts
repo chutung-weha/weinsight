@@ -195,8 +195,10 @@ export async function completeTest(data: CompleteTestInput) {
     }
   }
 
-  await prisma.testSession.update({
-    where: { id: sessionId },
+  // Atomic update: chỉ update nếu status vẫn là IN_PROGRESS
+  // Ngăn race condition khi double-submit
+  const updated = await prisma.testSession.updateMany({
+    where: { id: sessionId, status: "IN_PROGRESS" },
     data: {
       status: "COMPLETED",
       completedAt: new Date(),
@@ -204,6 +206,12 @@ export async function completeTest(data: CompleteTestInput) {
     },
   });
 
+  if (updated.count === 0) {
+    return { success: false as const, error: "Phiên test đã kết thúc" };
+  }
+
+  // AI insight generation nằm ngoài guard vì là external call chậm
+  // Nếu fail, test vẫn COMPLETED — insight có thể re-generate sau
   let aiInsight = null;
   try {
     const { insight, config } = await generateInsight({ sessionId });

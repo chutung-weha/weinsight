@@ -12,7 +12,7 @@ export async function GET(
   const session = await getServerSession(authOptions);
   if (!session?.user) {
     return NextResponse.json(
-      { success: false, error: "ChÆ°a Ä‘Äƒng nháº­p" },
+      { success: false, error: "Chưa đăng nhập" },
       { status: 401 }
     );
   }
@@ -39,7 +39,6 @@ export async function GET(
       answers: {
         orderBy: { order: "asc" },
         select: { id: true, text: true, order: true },
-        // KHÔNG trả scores cho client — tránh gian lận
       },
     },
     orderBy: { order: "asc" },
@@ -47,7 +46,7 @@ export async function GET(
 
   if (questions.length === 0) {
     return NextResponse.json(
-      { success: false, error: "BÃ i test nÃ y chÆ°a sáºµn sÃ ng" },
+      { success: false, error: "Bài test này chưa sẵn sàng" },
       { status: 404 }
     );
   }

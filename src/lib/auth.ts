@@ -1,7 +1,10 @@
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
-import { compare } from "bcryptjs";
+import { compare, hash } from "bcryptjs";
 import { prisma } from "@/lib/prisma";
+
+// Dummy hash để constant-time compare khi user không tồn tại (chống timing attack)
+const DUMMY_HASH = "$2a$12$000000000000000000000uGJBEjz0dQ7S2VCh3FY.1C0YM0HxHHi";
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -20,17 +23,18 @@ export const authOptions: NextAuthOptions = {
           where: { email: credentials.email },
         });
 
-        if (!user) {
+        // Luôn chạy bcrypt compare để giữ constant time — chống timing attack
+        const isValid = await compare(
+          credentials.password,
+          user?.passwordHash || DUMMY_HASH
+        );
+
+        if (!user || !isValid) {
           throw new Error("Email hoặc mật khẩu không đúng");
         }
 
         if (!user.active) {
           throw new Error("Tài khoản đã bị vô hiệu hóa");
-        }
-
-        const isValid = await compare(credentials.password, user.passwordHash);
-        if (!isValid) {
-          throw new Error("Email hoặc mật khẩu không đúng");
         }
 
         return {
@@ -63,7 +67,7 @@ export const authOptions: NextAuthOptions = {
       // Sync role/active từ DB mỗi 5 phút
       const now = Date.now();
       const lastChecked = (token.lastChecked as number) || 0;
-      if (now - lastChecked > 5 * 60 * 1000) {
+      if (now - lastChecked > 1 * 60 * 1000) {
         const dbUser = await prisma.user.findUnique({
           where: { id: token.id as string },
           select: { role: true, active: true, name: true },

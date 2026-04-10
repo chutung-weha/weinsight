@@ -3,7 +3,7 @@ import Link from "next/link";
 export function Logo() {
   return (
     <Link href="/" className="flex items-center gap-2.5">
-      <svg viewBox="0 0 56 40" fill="none" className="h-9 w-auto">
+      <svg viewBox="0 0 56 40" fill="none" className="h-9 w-auto" aria-label="WE INSIGHT logo" role="img">
         <defs>
           <linearGradient id="cL" x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" stopColor="#5EEAD4" />

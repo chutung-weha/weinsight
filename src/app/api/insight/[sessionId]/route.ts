@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { generateInsight } from "@/lib/ai/generate-insight";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 // GET — Fetch existing insight cho session
 export async function GET(
@@ -35,7 +36,7 @@ export async function GET(
   const isOwner = insight.session.userId === authSession.user.id;
   const isAdmin = authSession.user.role === "ADMIN" || authSession.user.role === "HR";
   if (!isOwner && !isAdmin) {
-    return NextResponse.json({ success: false, error: "KhÃ´ng cÃ³ quyá»n" }, { status: 403 });
+    return NextResponse.json({ success: false, error: "Không có quyền" }, { status: 403 });
   }
 
   return NextResponse.json({
@@ -67,6 +68,15 @@ export async function POST(
   }
 
   const { sessionId } = await params;
+
+  // Rate limit: 5 requests per user per minute
+  const rl = checkRateLimit(`insight:${authSession.user.id}`, { windowMs: 60_000, maxRequests: 5 });
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { success: false, error: `Quá nhiều yêu cầu. Vui lòng thử lại sau ${Math.ceil(rl.retryAfterMs / 1000)} giây.` },
+      { status: 429, headers: { "Retry-After": String(Math.ceil(rl.retryAfterMs / 1000)) } }
+    );
+  }
 
   // Verify session exists và user có quyền
   const testSession = await prisma.testSession.findUnique({

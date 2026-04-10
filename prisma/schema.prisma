@@ -196,6 +196,7 @@ model KnowledgeDoc {
   updatedAt DateTime @updatedAt
 
   @@index([status])
+  @@index([uploadedById])
   @@map("knowledge_docs")
 }
 
