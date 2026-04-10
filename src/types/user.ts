@@ -1,2 +1,2 @@
-export { Role } from "@/generated/prisma/enums";
-export type { UserModel as User } from "@/generated/prisma/models";
+export { Role } from "@prisma/client";
+export type { User } from "@prisma/client";
