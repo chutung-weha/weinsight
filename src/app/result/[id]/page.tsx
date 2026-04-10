@@ -11,6 +11,8 @@ interface ResultData {
   testType: string;
   status: string;
   totalScores: Record<string, number> | null;
+  maxScores: Record<string, number>;
+  questionCount: number;
   completedAt: string | null;
   answers: { question: string; answer: string; order: number }[];
   aiInsight: {
@@ -22,18 +24,52 @@ interface ResultData {
   } | null;
 }
 
-const barGradients: Record<string, string> = {
-  D: "from-cyan-500 to-cyan-300",
-  I: "from-violet-500 to-violet-300",
-  S: "from-blue-500 to-blue-300",
-  C: "from-teal-500 to-teal-300",
-};
-
-const barLabels: Record<string, string> = {
-  D: "Dominance",
-  I: "Influence",
-  S: "Steadiness",
-  C: "Conscientiousness",
+const testThemes: Record<string, {
+  gradients: Record<string, string>;
+  labels: Record<string, string>;
+  ringGradient: [string, string];
+}> = {
+  DISC: {
+    gradients: {
+      D: "from-cyan-500 to-cyan-300",
+      I: "from-violet-500 to-violet-300",
+      S: "from-blue-500 to-blue-300",
+      C: "from-teal-500 to-teal-300",
+    },
+    labels: {
+      D: "Dominance",
+      I: "Influence",
+      S: "Steadiness",
+      C: "Conscientiousness",
+    },
+    ringGradient: ["#06B6D4", "#7C3AED"],
+  },
+  LOGIC: {
+    gradients: {
+      correct: "from-violet-500 to-violet-300",
+      reasoning: "from-purple-500 to-purple-300",
+    },
+    labels: {
+      correct: "Câu đúng",
+      reasoning: "Tư duy suy luận",
+    },
+    ringGradient: ["#8B5CF6", "#A855F7"],
+  },
+  SITUATION: {
+    gradients: {
+      leadership: "from-blue-500 to-blue-300",
+      teamwork: "from-cyan-500 to-cyan-300",
+      communication: "from-teal-500 to-teal-300",
+      problemSolving: "from-indigo-500 to-indigo-300",
+    },
+    labels: {
+      leadership: "Lãnh đạo",
+      teamwork: "Đồng đội",
+      communication: "Giao tiếp",
+      problemSolving: "Giải quyết vấn đề",
+    },
+    ringGradient: ["#2563EB", "#06B6D4"],
+  },
 };
 
 export default function ResultPage() {
@@ -105,20 +141,38 @@ export default function ResultPage() {
   }
 
   const scores = data.totalScores || {};
-  const total = Object.values(scores).reduce((a, b) => a + b, 0) || 1;
+  const maxScores = data.maxScores || {};
+  const theme = testThemes[data.testType] || testThemes.DISC;
+  const isDISC = data.testType === "DISC";
   const pct: Record<string, number> = {};
-  for (const [k, v] of Object.entries(scores)) {
-    pct[k] = Math.round((v / total) * 100);
+
+  if (isDISC) {
+    // DISC: tỷ trọng profile (proportion) — đúng nghiệp vụ vì DISC đo "thiên hướng"
+    const total = Object.values(scores).reduce((a, b) => a + b, 0) || 1;
+    for (const [k, v] of Object.entries(scores)) {
+      pct[k] = Math.round((v / total) * 100);
+    }
+  } else {
+    // Logic + Situation: điểm năng lực tuyệt đối (score / maxPossible)
+    // maxScores từ API — computed từ actual DB data, không hardcode
+    for (const [k, v] of Object.entries(scores)) {
+      const max = maxScores[k] || 1;
+      pct[k] = Math.round((v / max) * 100);
+    }
   }
 
-  // Overall score: trung bình % của các dimension, scale 0-100
-  // Balanced profile → điểm cao hơn; lệch → điểm thấp hơn (phản ánh đa chiều)
   const dimensions = Object.values(pct);
   const avgPct = dimensions.length > 0 ? dimensions.reduce((a, b) => a + b, 0) / dimensions.length : 0;
   const maxPct = Math.max(...dimensions, 0);
-  // Blend: 60% max dimension + 40% average → reward cả chuyên sâu lẫn cân bằng
-  const overall = Math.round(maxPct * 0.6 + avgPct * 0.4);
+
+  // Overall formula per test type:
+  // - DISC (proportion): max dimension % — reward profile rõ ràng, không dùng blend vì proportion sum ≈ 100%
+  // - Logic/Situation (absolute): 60% max + 40% avg — reward cả chuyên sâu lẫn cân bằng
+  const overall = isDISC
+    ? maxPct
+    : Math.round(maxPct * 0.6 + avgPct * 0.4);
   const dashOffset = 314 - (314 * overall) / 100;
+  const overallLabel = isDISC ? "profile" : "điểm tổng";
   const insight = data.aiInsight;
 
   return (
@@ -145,21 +199,21 @@ export default function ResultPage() {
               <svg width={140} height={140} viewBox="0 0 120 120">
                 <circle cx={60} cy={60} r={50} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={8} />
                 <circle cx={60} cy={60} r={50} fill="none" stroke="url(#rg)" strokeWidth={8} strokeLinecap="round" strokeDasharray={314} strokeDashoffset={dashOffset} transform="rotate(-90 60 60)" />
-                <defs><linearGradient id="rg" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stopColor="#06B6D4" /><stop offset="100%" stopColor="#7C3AED" /></linearGradient></defs>
+                <defs><linearGradient id="rg" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stopColor={theme.ringGradient[0]} /><stop offset="100%" stopColor={theme.ringGradient[1]} /></linearGradient></defs>
                 <text x={60} y={55} textAnchor="middle" fontSize={30} fontWeight={800} fill="#F1F5F9">{overall}</text>
-                <text x={60} y={72} textAnchor="middle" fontSize={10} fill="#94A3B8">điểm tổng</text>
+                <text x={60} y={72} textAnchor="middle" fontSize={10} fill="#94A3B8">{overallLabel}</text>
               </svg>
             </div>
             <div className="space-y-3.5">
               {Object.entries(pct).map(([key, value]) => (
                 <div key={key}>
                   <div className="flex justify-between text-xs mb-1.5">
-                    <span className="text-slate-400">{barLabels[key] || key}</span>
-                    <span className="font-semibold">{value}%</span>
+                    <span className="text-slate-400">{theme.labels[key] || key}</span>
+                    <span className="font-semibold">{!isDISC && key === "correct" ? `${scores.correct || 0}/${maxScores.correct || "?"}` : `${value}%`}</span>
                   </div>
                   <div className="bar-track">
                     <div
-                      className={`bar-fill bg-gradient-to-r ${barGradients[key] || "from-cyan-500 to-cyan-300"}`}
+                      className={`bar-fill bg-gradient-to-r ${theme.gradients[key] || "from-cyan-500 to-cyan-300"}`}
                       style={{ width: `${value}%` }}
                     />
                   </div>

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { computeScoreMeta } from "@/lib/scoring";
 
 export async function GET(
   _req: Request,
@@ -50,6 +51,8 @@ export async function GET(
     );
   }
 
+  const { maxScores, questionCount } = await computeScoreMeta(testSession.testType);
+
   return NextResponse.json({
     success: true,
     data: {
@@ -57,6 +60,8 @@ export async function GET(
       testType: testSession.testType,
       status: testSession.status,
       totalScores: testSession.totalScores,
+      maxScores,
+      questionCount,
       completedAt: testSession.completedAt,
       answers: testSession.answers.map((a) => ({
         question: a.question.content,

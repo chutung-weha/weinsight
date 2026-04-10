@@ -17,8 +17,7 @@ export interface DISCScores {
 
 export interface LogicScores {
   correct: number;
-  total: number;
-  points: number;
+  reasoning: number;
 }
 
 export interface SituationScores {
