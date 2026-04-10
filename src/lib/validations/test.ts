@@ -2,6 +2,9 @@ import { z } from "zod/v4";
 
 export const startTestSchema = z.object({
   testType: z.enum(["DISC", "LOGIC", "SITUATION", "NUMEROLOGY"]),
+  candidateName: z.string().min(2, "Vui lòng nhập họ tên (ít nhất 2 ký tự)").optional(),
+  dateOfBirth: z.string().optional(),
+  occupation: z.string().min(1, "Vui lòng nhập nghề nghiệp / bối cảnh").optional(),
 });
 
 export const submitAnswerSchema = z.object({

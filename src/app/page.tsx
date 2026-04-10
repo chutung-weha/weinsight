@@ -7,9 +7,9 @@ const features = [
   { title: "Bài test DISC", desc: "Đánh giá tính cách theo 4 chiều: Dominance, Influence, Steadiness, Conscientiousness.", color: "cyan", icon: "sparkles" },
   { title: "Tư duy Logic", desc: "Đo năng lực giải quyết vấn đề, tư duy phân tích và khả năng ra quyết định.", color: "violet", icon: "bolt" },
   { title: "Xử lý tình huống", desc: "Đánh giá cách ứng xử trong các tình huống thực tế tại doanh nghiệp.", color: "blue", icon: "chat" },
-  { title: "Upload tri thức (RAG)", desc: "Admin upload tài liệu nội bộ — AI đọc và đánh giá theo ngữ cảnh doanh nghiệp.", color: "teal", icon: "doc" },
-  { title: "Cấu hình AI Prompt", desc: "Chỉnh tone (thẳng/nhẹ/coach) và mục tiêu (tuyển dụng/đào tạo/đánh giá).", color: "cyan", icon: "config" },
-  { title: "Admin Dashboard", desc: "Xem danh sách, điểm, rank nhân sự. Filter theo phòng ban và click xem chi tiết.", color: "violet", icon: "chart" },
+  { title: "Cấu hình AI Prompt", desc: "Chỉnh tone (thẳng/nhẹ/coach) và mục tiêu (tuyển dụng/đào tạo/đánh giá).", color: "teal", icon: "config" },
+  { title: "Admin Dashboard", desc: "Xem danh sách, điểm, rank nhân sự. Filter theo phòng ban và click xem chi tiết.", color: "cyan", icon: "chart" },
+  { title: "Thần số học", desc: "Phân tích 6 chỉ số Pythagoras từ họ tên và ngày sinh — hiểu sâu bản chất con người.", color: "violet", icon: "doc" },
 ];
 
 const iconMap: Record<string, React.ReactNode> = {
@@ -44,7 +44,7 @@ export default function Home() {
             <span className="gradient-text">Tăng trưởng bền vững</span>
           </h1>
           <p className="mt-5 text-base sm:text-lg text-slate-400 max-w-xl mx-auto leading-relaxed">
-            Hệ thống đánh giá nhân sự + AI Coach. Phân tích DISC, tư duy logic, xử lý tình huống — kết hợp tri thức doanh nghiệp để đưa ra insight chính xác.
+            Hệ thống đánh giá nhân sự + AI Coach. Phân tích DISC, tư duy logic, xử lý tình huống và thần số học — đưa ra insight chính xác cho mọi quyết định.
           </p>
           <div className="mt-9 flex gap-3.5 justify-center flex-wrap">
             <Link href="/test" className="btn-glow gradient-bg text-base px-8 py-3">Làm bài test ngay</Link>
@@ -54,7 +54,7 @@ export default function Home() {
             {[
               { value: "3", label: "Loại bài test" },
               { value: "AI", label: "Phân tích chuyên sâu", violet: true },
-              { value: "RAG", label: "Tri thức doanh nghiệp" },
+              { value: "6", label: "Chỉ số thần số học" },
               { value: "50+", label: "Chuyên gia WEHA", violet: true },
             ].map((s) => (
               <div key={s.label} className="text-center">
@@ -72,7 +72,7 @@ export default function Home() {
           <p className="reveal text-xs font-semibold tracking-[2px] uppercase text-cyan-400 text-center mb-3">Tính năng</p>
           <h2 className="reveal d1 text-3xl font-bold text-center mb-4">Không chỉ test — mà là <span className="gradient-text">công cụ ra quyết định</span></h2>
           <p className="reveal d2 text-sm text-slate-400 text-center max-w-lg mx-auto mb-12 leading-relaxed">
-            Kết hợp bài test đánh giá, tri thức doanh nghiệp và AI để đưa ra insight chính xác cho mọi quyết định nhân sự.
+            Kết hợp bài test đánh giá và AI để đưa ra insight chính xác cho mọi quyết định nhân sự.
           </p>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {features.map((f, i) => (
@@ -97,7 +97,7 @@ export default function Home() {
           <div className="grid sm:grid-cols-3 gap-5">
             {[
               { num: "1", title: "Làm bài test", desc: "Ứng viên hoặc nhân sự hoàn thành bài test DISC, Logic hoặc Situation qua giao diện glass card mượt mà.", bg: "gradient-bg" },
-              { num: "2", title: "AI phân tích", desc: "AI kết hợp kết quả test + tri thức doanh nghiệp (RAG) để đánh giá toàn diện theo tiêu chuẩn công ty.", bg: "bg-gradient-to-br from-violet-500 to-cyan-500" },
+              { num: "2", title: "AI phân tích", desc: "AI phân tích kết quả test để đánh giá toàn diện theo tiêu chuẩn công ty.", bg: "bg-gradient-to-br from-violet-500 to-cyan-500" },
               { num: "3", title: "Nhận AI Insight", desc: "Xem báo cáo chi tiết: radar chart, điểm từng phần, nhận định vai trò phù hợp và khuyến nghị hành động.", bg: "bg-gradient-to-br from-cyan-500 to-blue-500" },
             ].map((s, i) => (
               <div key={s.num} className={`reveal d${i + 1} glass glass-hover p-9 text-center`}>
@@ -119,7 +119,7 @@ export default function Home() {
               <p className="text-xs font-semibold tracking-[2px] uppercase text-cyan-400 mb-3">AI Insight</p>
               <h2 className="text-3xl font-bold leading-snug mb-5">Không chỉ điểm số —<br />mà là <span className="gradient-text">kết luận đúng</span></h2>
               <p className="text-sm text-slate-400 leading-relaxed mb-6">
-                AI đọc dữ liệu test kết hợp tài liệu nội bộ doanh nghiệp để đưa ra nhận định: người này hợp vai gì, có nên tuyển không, có nên promote không.
+                AI phân tích dữ liệu test để đưa ra nhận định: người này hợp vai gì, có nên tuyển không, có nên promote không.
               </p>
               <div className="space-y-3">
                 {[

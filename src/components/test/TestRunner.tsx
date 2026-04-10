@@ -19,31 +19,58 @@ export interface TestTheme {
   progressGradient: string;
   buttonClass: string;
   orbs: [string, string];
-  // Full Tailwind classes — không dùng dynamic interpolation
-  labelColor: string;           // e.g. "text-cyan-400"
-  selectedBg: string;           // e.g. "bg-cyan-500/10"
-  selectedBorder: string;       // e.g. "border-cyan-500/30"
-  selectedShadow: string;       // e.g. "shadow-cyan-500/5"
-  radioBorderActive: string;    // e.g. "border-cyan-400"
-  radioBgActive: string;        // e.g. "bg-cyan-400"
+  labelColor: string;
+  selectedBg: string;
+  selectedBorder: string;
+  selectedShadow: string;
+  radioBorderActive: string;
+  radioBgActive: string;
 }
 
-export function TestRunner({ theme }: { theme: TestTheme }) {
+const DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
+const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1);
+
+function isValidDate(d: number, m: number, y: number): boolean {
+  const date = new Date(y, m - 1, d);
+  return date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d;
+}
+
+export function TestRunner({ theme, defaultCandidateName }: { theme: TestTheme; defaultCandidateName?: string }) {
   const router = useRouter();
+
+  // Info form state
+  const [step, setStep] = useState<"info" | "questions">("info");
+  const [candidateName, setCandidateName] = useState(defaultCandidateName || "");
+  const [day, setDay] = useState(0);
+  const [month, setMonth] = useState(0);
+  const [year, setYear] = useState(0);
+  const [occupation, setOccupation] = useState("");
+  const [formError, setFormError] = useState("");
+  const [formSubmitting, setFormSubmitting] = useState(false);
+
+  // Questions state
+  const [answeredIds, setAnsweredIds] = useState<string[]>([]);
   const [questions, setQuestions] = useState<QuestionData[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [current, setCurrent] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
+  const thisYear = new Date().getFullYear();
+  const YEARS = Array.from({ length: thisYear - 1900 + 1 }, (_, i) => thisYear - i);
+
+  // Fetch questions + start session after info form submitted
   useEffect(() => {
+    if (step !== "questions") return;
+
     let cancelled = false;
     const controller = new AbortController();
 
     async function init() {
+      setLoading(true);
       try {
         const res = await fetch(`/api/test/${theme.testType.toLowerCase()}/questions`, {
           signal: controller.signal,
@@ -57,17 +84,9 @@ export function TestRunner({ theme }: { theme: TestTheme }) {
         }
         setQuestions(data.data);
 
-        const sessionResult = await startTest({ testType: theme.testType });
-        if (cancelled) return;
-
-        if (!sessionResult.success) {
-          setError(sessionResult.error);
-          return;
-        }
-        setSessionId(sessionResult.sessionId);
-
-        if (sessionResult.answeredQuestionIds.length > 0) {
-          const answeredSet = new Set(sessionResult.answeredQuestionIds);
+        // Resume: nếu đã có câu trả lời, nhảy tới câu tiếp theo chưa trả lời
+        if (answeredIds.length > 0) {
+          const answeredSet = new Set(answeredIds);
           const nextUnanswered = data.data.findIndex(
             (q: QuestionData) => !answeredSet.has(q.id)
           );
@@ -91,8 +110,172 @@ export function TestRunner({ theme }: { theme: TestTheme }) {
       cancelled = true;
       controller.abort();
     };
-  }, [theme.testType]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, theme.testType]);
 
+  async function handleInfoSubmit() {
+    setFormError("");
+    const name = candidateName.trim();
+    if (name.length < 2) { setFormError("Vui lòng nhập họ tên (ít nhất 2 ký tự)"); return; }
+    if (!day || !month || !year) { setFormError("Vui lòng chọn đầy đủ ngày tháng năm sinh"); return; }
+    if (!isValidDate(day, month, year)) { setFormError("Ngày sinh không hợp lệ"); return; }
+    if (!occupation.trim()) { setFormError("Vui lòng nhập nghề nghiệp / bối cảnh"); return; }
+
+    setFormSubmitting(true);
+    const dob = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+
+    const result = await startTest({
+      testType: theme.testType,
+      candidateName: name,
+      dateOfBirth: dob,
+      occupation: occupation.trim(),
+    });
+
+    setFormSubmitting(false);
+
+    if (!result.success) {
+      setFormError(result.error || "Không thể bắt đầu test");
+      return;
+    }
+
+    setSessionId(result.sessionId);
+    setAnsweredIds(result.answeredQuestionIds);
+
+    // Nếu đã có answers (resume) → skip info, vào thẳng questions
+    if (result.answeredQuestionIds.length > 0) {
+      setStep("questions");
+      return;
+    }
+
+    setStep("questions");
+  }
+
+  // ─── INFO FORM STEP ────────────────────────────────────
+  if (step === "info") {
+    return (
+      <>
+        <Header />
+        <section className="relative min-h-[calc(100vh-60px)] flex items-center justify-center py-12 overflow-hidden">
+          <div
+            className="bg-orb w-[500px] h-[500px] -top-32 -right-32 absolute"
+            style={{ background: `radial-gradient(circle, ${theme.orbs[0]}, transparent)` }}
+          />
+          <div
+            className="bg-orb w-[300px] h-[300px] bottom-0 -left-20 absolute"
+            style={{ background: `radial-gradient(circle, ${theme.orbs[1]}, transparent)` }}
+          />
+
+          <div className="relative w-full max-w-lg mx-auto px-6">
+            <div className="glass p-8 sm:p-10">
+              <div className={`text-xs font-semibold uppercase tracking-wider mb-2 ${theme.labelColor}`}>
+                {theme.label}
+              </div>
+              <h2 className="text-xl sm:text-2xl font-bold mb-2">
+                Thông tin cá nhân
+              </h2>
+              <p className="text-sm text-slate-400 mb-8 leading-relaxed">
+                Vui lòng nhập thông tin để AI có thể phân tích chính xác hơn.
+              </p>
+
+              <div className="space-y-5">
+                {/* Họ tên */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1.5">
+                    Họ và tên
+                  </label>
+                  <input
+                    type="text"
+                    value={candidateName}
+                    onChange={(e) => setCandidateName(e.target.value)}
+                    placeholder="Nguyễn Văn A"
+                    className="w-full px-4 py-3 rounded-xl bg-white/[0.05] border border-white/10 text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-cyan-500/40 focus:bg-white/[0.08] transition-all"
+                  />
+                </div>
+
+                {/* Ngày sinh */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1.5">
+                    Ngày tháng năm sinh
+                  </label>
+                  <div className="grid grid-cols-3 gap-3">
+                    <select
+                      value={day}
+                      onChange={(e) => setDay(Number(e.target.value))}
+                      className="px-3 py-3 rounded-xl bg-white/[0.05] border border-white/10 text-slate-200 focus:outline-none focus:border-cyan-500/40 transition-all"
+                    >
+                      <option value={0} className="bg-[#0B1120]">Ngày</option>
+                      {DAYS.map((d) => (
+                        <option key={d} value={d} className="bg-[#0B1120]">{d}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={month}
+                      onChange={(e) => setMonth(Number(e.target.value))}
+                      className="px-3 py-3 rounded-xl bg-white/[0.05] border border-white/10 text-slate-200 focus:outline-none focus:border-cyan-500/40 transition-all"
+                    >
+                      <option value={0} className="bg-[#0B1120]">Tháng</option>
+                      {MONTHS.map((m) => (
+                        <option key={m} value={m} className="bg-[#0B1120]">Tháng {m}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={year}
+                      onChange={(e) => setYear(Number(e.target.value))}
+                      className="px-3 py-3 rounded-xl bg-white/[0.05] border border-white/10 text-slate-200 focus:outline-none focus:border-cyan-500/40 transition-all"
+                    >
+                      <option value={0} className="bg-[#0B1120]">Năm</option>
+                      {YEARS.map((y) => (
+                        <option key={y} value={y} className="bg-[#0B1120]">{y}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Nghề nghiệp / Bối cảnh */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1.5">
+                    Nghề nghiệp / Bối cảnh
+                  </label>
+                  <input
+                    type="text"
+                    value={occupation}
+                    onChange={(e) => setOccupation(e.target.value)}
+                    placeholder="VD: Nhân viên kinh doanh, Kỹ sư phần mềm, Sinh viên..."
+                    className="w-full px-4 py-3 rounded-xl bg-white/[0.05] border border-white/10 text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-cyan-500/40 focus:bg-white/[0.08] transition-all"
+                  />
+                </div>
+
+                {formError && (
+                  <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-2.5">
+                    {formError}
+                  </div>
+                )}
+
+                <button
+                  onClick={handleInfoSubmit}
+                  disabled={formSubmitting}
+                  className={`w-full py-3.5 rounded-xl font-semibold text-sm transition-all duration-300 ${
+                    formSubmitting
+                      ? "bg-white/5 text-slate-600 cursor-not-allowed"
+                      : `${theme.buttonClass} hover:-translate-y-0.5`
+                  }`}
+                >
+                  {formSubmitting ? "Đang xử lý..." : "Bắt đầu làm test"}
+                  {!formSubmitting && (
+                    <svg className="w-4 h-4 inline-block ml-1.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </>
+    );
+  }
+
+  // ─── LOADING STATE ─────────────────────────────────────
   if (loading) {
     return (
       <>
@@ -104,6 +287,7 @@ export function TestRunner({ theme }: { theme: TestTheme }) {
     );
   }
 
+  // ─── ERROR STATE ───────────────────────────────────────
   if (error || questions.length === 0) {
     return (
       <>
@@ -120,6 +304,7 @@ export function TestRunner({ theme }: { theme: TestTheme }) {
     );
   }
 
+  // ─── QUESTIONS STEP ────────────────────────────────────
   const progress = (current / questions.length) * 100;
   const question = questions[current];
 

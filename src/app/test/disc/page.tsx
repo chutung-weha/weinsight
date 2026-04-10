@@ -1,8 +1,14 @@
+import { getCurrentUser } from "@/lib/auth-utils";
+import { redirect } from "next/navigation";
 import { TestRunner } from "@/components/test/TestRunner";
 
-export default function DISCTestPage() {
+export default async function DISCTestPage() {
+  const user = await getCurrentUser();
+  if (!user) redirect("/dang-nhap");
+
   return (
     <TestRunner
+      defaultCandidateName={user.name || ""}
       theme={{
         testType: "DISC",
         label: "DISC Test",

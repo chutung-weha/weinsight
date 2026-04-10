@@ -11,15 +11,21 @@ interface ResultData {
   testType: string;
   status: string;
   totalScores: Record<string, number> | null;
+  candidateName: string | null;
+  dateOfBirth: string | null;
+  occupation: string | null;
   maxScores: Record<string, number>;
   questionCount: number;
   completedAt: string | null;
   answers: { question: string; answer: string; order: number }[];
   aiInsight: {
     summary: string;
+    personalityProfile?: string;
+    numerologyInsight?: string;
     strengths: string[];
     improvements: string[];
     suitableRoles: string[];
+    developmentPlan?: string[];
     recommendation: string;
   } | null;
 }
@@ -37,10 +43,10 @@ const testThemes: Record<string, {
       C: "from-teal-500 to-teal-300",
     },
     labels: {
-      D: "Dominance",
-      I: "Influence",
-      S: "Steadiness",
-      C: "Conscientiousness",
+      D: "Năng lực dẫn dắt (D)",
+      I: "Truyền cảm hứng (I)",
+      S: "Đáng tin cậy (S)",
+      C: "Tư duy hệ thống (C)",
     },
     ringGradient: ["#06B6D4", "#7C3AED"],
   },
@@ -77,6 +83,7 @@ export default function ResultPage() {
   const sessionId = params.id as string;
   const [data, setData] = useState<ResultData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [insightLoading, setInsightLoading] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -95,6 +102,22 @@ export default function ResultPage() {
           setError(json.error);
         } else {
           setData(json.data);
+          // Nếu chưa có AI Insight → tự động gọi generate
+          if (!json.data.aiInsight && json.data.status === "COMPLETED") {
+            if (!cancelled) setInsightLoading(true);
+            try {
+              const genRes = await fetch(`/api/insight/${sessionId}`, { method: "POST" });
+              const genJson = await genRes.json();
+              if (genJson.success && !cancelled) {
+                const reloadRes = await fetch(`/api/result/${sessionId}`);
+                const reloadJson = await reloadRes.json();
+                if (reloadJson.success && !cancelled) {
+                  setData(reloadJson.data);
+                }
+              }
+            } catch { /* best-effort */ }
+            if (!cancelled) setInsightLoading(false);
+          }
         }
       } catch (err) {
         if (!cancelled && !(err instanceof DOMException && err.name === "AbortError")) {
@@ -172,7 +195,7 @@ export default function ResultPage() {
     ? maxPct
     : Math.round(maxPct * 0.6 + avgPct * 0.4);
   const dashOffset = 314 - (314 * overall) / 100;
-  const overallLabel = isDISC ? "profile" : "điểm tổng";
+  const overallLabel = isDISC ? "Tổng Quan" : "Điểm Tổng";
   const insight = data.aiInsight;
 
   return (
@@ -187,6 +210,14 @@ export default function ResultPage() {
           <h1 className="text-3xl font-extrabold mb-2">
             <span className="gradient-text">Báo cáo đánh giá</span>
           </h1>
+          {data.candidateName && (
+            <div className="flex items-center justify-center gap-3 mt-3 mb-2">
+              <span className="text-base font-semibold text-slate-200">{data.candidateName}</span>
+              {data.occupation && (
+                <span className="text-xs text-slate-500 bg-white/5 px-2.5 py-0.5 rounded-full">{data.occupation}</span>
+              )}
+            </div>
+          )}
           {insight && (
             <p className="text-sm text-slate-400 max-w-lg mx-auto">{insight.summary}</p>
           )}
@@ -238,12 +269,28 @@ export default function ResultPage() {
 
             {insight ? (
               <>
+                {/* Phân tích tính cách tổng hợp */}
+                {insight.personalityProfile && (
+                  <div className="glass-sm p-5 bg-cyan-500/5 border-cyan-500/15 mb-5">
+                    <div className="text-xs font-semibold text-cyan-300 mb-2">Phân tích tính cách (DISC + Thần số học)</div>
+                    <p className="text-sm text-slate-300 leading-relaxed">{insight.personalityProfile}</p>
+                  </div>
+                )}
+
+                {/* Thần số học insight */}
+                {insight.numerologyInsight && (
+                  <div className="glass-sm p-5 bg-amber-500/5 border-amber-500/15 mb-5">
+                    <div className="text-xs font-semibold text-amber-300 mb-2">Thần số học Pythagoras</div>
+                    <p className="text-sm text-slate-300 leading-relaxed">{insight.numerologyInsight}</p>
+                  </div>
+                )}
+
                 {/* Vai trò phù hợp */}
-                <div className="glass-sm p-5 bg-cyan-500/5 border-cyan-500/15 mb-6">
-                  <div className="text-xs font-semibold text-cyan-300 mb-2">Vai trò phù hợp</div>
+                <div className="glass-sm p-5 bg-blue-500/5 border-blue-500/15 mb-5">
+                  <div className="text-xs font-semibold text-blue-300 mb-2">Vai trò phù hợp</div>
                   <div className="flex flex-wrap gap-2">
                     {insight.suitableRoles.map((role) => (
-                      <span key={role} className="text-sm font-semibold bg-cyan-500/10 text-cyan-300 px-3 py-1 rounded-full">
+                      <span key={role} className="text-sm font-semibold bg-blue-500/10 text-blue-300 px-3 py-1 rounded-full">
                         {role}
                       </span>
                     ))}
@@ -251,39 +298,64 @@ export default function ResultPage() {
                 </div>
 
                 {/* Điểm mạnh & Cần phát triển */}
-                <div className="grid sm:grid-cols-2 gap-5 mb-6">
+                <div className="grid sm:grid-cols-2 gap-5 mb-5">
                   <div>
                     <div className="text-xs font-semibold text-teal-400 uppercase tracking-wider mb-3">Điểm mạnh</div>
                     <div className="space-y-2">
                       {insight.strengths.map((s) => (
-                        <div key={s} className="flex items-center gap-2 text-sm text-slate-300">
-                          <span className="text-teal-400">✓</span> {s}
+                        <div key={s} className="flex items-start gap-2 text-sm text-slate-300">
+                          <span className="text-teal-400 shrink-0">✓</span> {s}
                         </div>
                       ))}
                     </div>
                   </div>
                   <div>
-                    <div className="text-xs font-semibold text-amber-400 uppercase tracking-wider mb-3">Cần phát triển</div>
+                    <div className="text-xs font-semibold text-rose-400 uppercase tracking-wider mb-3">Cần phát triển</div>
                     <div className="space-y-2">
                       {insight.improvements.map((item) => (
-                        <div key={item} className="flex items-center gap-2 text-sm text-slate-300">
-                          <span className="text-amber-400">→</span> {item}
+                        <div key={item} className="flex items-start gap-2 text-sm text-slate-300">
+                          <span className="text-rose-400 shrink-0">→</span> {item}
                         </div>
                       ))}
                     </div>
                   </div>
                 </div>
 
+                {/* Kế hoạch phát triển */}
+                {insight.developmentPlan && insight.developmentPlan.length > 0 && (
+                  <div className="glass-sm p-5 bg-teal-500/5 border-teal-500/15 mb-5">
+                    <div className="text-xs font-semibold text-teal-300 mb-3">Kế hoạch phát triển</div>
+                    <div className="space-y-2.5">
+                      {insight.developmentPlan.map((step, i) => (
+                        <div key={step} className="flex items-start gap-3 text-sm text-slate-300">
+                          <span className="w-6 h-6 rounded-full bg-teal-500/15 text-teal-400 flex items-center justify-center shrink-0 text-xs font-bold">{i + 1}</span>
+                          {step}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Khuyến nghị */}
                 <div className="glass-sm p-5 bg-violet-500/5 border-violet-500/15">
-                  <div className="text-xs font-semibold text-violet-300 mb-2">Khuyến nghị</div>
-                  <p className="text-sm text-slate-400 leading-relaxed">{insight.recommendation}</p>
+                  <div className="text-xs font-semibold text-violet-300 mb-2">Khuyến nghị tổng hợp</div>
+                  <p className="text-sm text-slate-300 leading-relaxed">{insight.recommendation}</p>
                 </div>
               </>
             ) : (
               <div className="text-center py-8 text-slate-500">
-                <p>Chưa có AI Insight cho phiên test này.</p>
-                <p className="text-xs mt-2">Vui lòng cấu hình ANTHROPIC_API_KEY để sử dụng AI.</p>
+                {insightLoading ? (
+                  <>
+                    <div className="w-10 h-10 rounded-full border-2 border-cyan-500 border-t-transparent animate-spin mx-auto mb-3" />
+                    <p>AI đang phân tích kết quả DISC + Thần số học...</p>
+                    <p className="text-xs mt-1">Có thể mất 10-20 giây</p>
+                  </>
+                ) : (
+                  <>
+                    <p>Chưa có AI Insight cho phiên test này.</p>
+                    <p className="text-xs mt-2">Vui lòng cấu hình GROQ_API_KEY để sử dụng AI.</p>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -291,7 +363,7 @@ export default function ResultPage() {
 
         {/* Actions */}
         <div className="flex justify-center gap-4 mt-10">
-          <Link href="/test" className="btn-ghost px-6 py-3 text-sm">Làm bài test khác</Link>
+          <Link href="/test" className="btn-ghost px-6 py-3 text-sm">Làm lại bài test</Link>
           <Link href="/" className="btn-glow gradient-bg px-6 py-3 text-sm">Về trang chủ</Link>
         </div>
       </div>

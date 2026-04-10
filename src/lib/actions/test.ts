@@ -39,16 +39,32 @@ export async function startTest(data: StartTestInput) {
       testType: testType as TestType,
       status: "IN_PROGRESS",
     },
-    include: {
+    select: {
+      id: true,
+      candidateName: true,
+      dateOfBirth: true,
+      occupation: true,
       answers: { select: { questionId: true } },
     },
   });
 
   if (existing) {
+    // Cập nhật pre-test info nếu có
+    if (parsed.data.candidateName || parsed.data.dateOfBirth || parsed.data.occupation) {
+      await prisma.testSession.update({
+        where: { id: existing.id },
+        data: {
+          candidateName: parsed.data.candidateName ?? existing.candidateName,
+          dateOfBirth: parsed.data.dateOfBirth ? new Date(parsed.data.dateOfBirth) : existing.dateOfBirth,
+          occupation: parsed.data.occupation ?? existing.occupation,
+        },
+      });
+    }
     return {
       success: true as const,
       sessionId: existing.id,
       answeredQuestionIds: existing.answers.map((answer) => answer.questionId),
+      hasPreTestInfo: !!(existing.candidateName || parsed.data.candidateName),
     };
   }
 
@@ -56,6 +72,9 @@ export async function startTest(data: StartTestInput) {
     data: {
       userId: user.id,
       testType: testType as TestType,
+      candidateName: parsed.data.candidateName,
+      dateOfBirth: parsed.data.dateOfBirth ? new Date(parsed.data.dateOfBirth) : undefined,
+      occupation: parsed.data.occupation,
     },
   });
 
@@ -63,6 +82,7 @@ export async function startTest(data: StartTestInput) {
     success: true as const,
     sessionId: session.id,
     answeredQuestionIds: [] as string[],
+    hasPreTestInfo: !!parsed.data.candidateName,
   };
 }
 

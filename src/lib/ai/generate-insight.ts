@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { computeScoreMeta } from "@/lib/scoring";
+import { calculateAll } from "@/lib/numerology";
+import { LIFE_PATH } from "@/lib/numerology-descriptions";
 import type { DISCScores, LogicScores, SituationScores } from "@/types/test";
 
 interface GenerateInsightInput {
@@ -8,9 +10,12 @@ interface GenerateInsightInput {
 
 interface InsightResult {
   summary: string;
+  personalityProfile: string;
+  numerologyInsight: string;
   strengths: string[];
   improvements: string[];
   suitableRoles: string[];
+  developmentPlan: string[];
   recommendation: string;
 }
 
@@ -49,18 +54,38 @@ export async function generateInsight({ sessionId }: GenerateInsightInput): Prom
     throw new Error("Session chưa hoàn thành");
   }
 
-  const scores = session.totalScores as unknown as Record<string, number>;
+  const scores = session.totalScores as Record<string, number>;
   const tone = config?.tone || "COACH";
   const objective = config?.objective || "EVALUATION";
+  const candidateName = session.candidateName || session.user.name;
+  const sessionDob = session.dateOfBirth;
+  const sessionOccupation = session.occupation;
 
   const { maxScores, questionCount } = await computeScoreMeta(session.testType);
 
-  // Nếu chưa có ANTHROPIC_API_KEY → dùng rule-based fallback
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return { insight: generateFallbackInsight(scores, session.testType, session.user.name, questionCount, maxScores), config };
+  // Tính thần số học nếu có đủ thông tin
+  let numerologyContext = "";
+  if (candidateName && sessionDob) {
+    const dob = new Date(sessionDob);
+    const numResult = calculateAll(candidateName, dob.getDate(), dob.getMonth() + 1, dob.getFullYear());
+    const lifePathDesc = LIFE_PATH[numResult.lifePath];
+    numerologyContext = `
+Kết quả Thần số học Pythagoras (tính từ họ tên + ngày sinh):
+- Số chủ đạo (Life Path): ${numResult.lifePath} — "${lifePathDesc?.title || ""}" — ${lifePathDesc?.summary || ""}
+- Chỉ số thái độ (Attitude): ${numResult.attitude}
+- Năng lực tự nhiên (Natural Ability): ${numResult.naturalAbility}
+- Chỉ số sứ mệnh (Expression): ${numResult.expression}
+- Chỉ số linh hồn (Soul Urge): ${numResult.soulUrge}
+- Chỉ số nhân cách (Personality): ${numResult.personality}
+${lifePathDesc ? `\nĐiểm mạnh theo thần số học: ${lifePathDesc.strengths.join(", ")}\nĐiểm yếu theo thần số học: ${lifePathDesc.weaknesses.join(", ")}\nNghề nghiệp phù hợp theo thần số học: ${lifePathDesc.careers.join(", ")}` : ""}`;
   }
 
-  // Gọi Claude API
+  // Nếu chưa có GROQ_API_KEY → dùng rule-based fallback
+  if (!process.env.GROQ_API_KEY) {
+    return { insight: generateFallbackInsight(scores, session.testType, candidateName, questionCount, maxScores), config };
+  }
+
+  // Gọi Gemini API
   const toneMap = {
     DIRECT: "thẳng thắn, ngắn gọn, tập trung vào kết luận",
     GENTLE: "nhẹ nhàng, khích lệ, tập trung điểm mạnh trước",
@@ -79,68 +104,84 @@ export async function generateInsight({ sessionId }: GenerateInsightInput): Prom
     .map((a) => `Q: ${a.question.content}\nA: ${a.answer.text}`)
     .join("\n\n");
 
-  const prompt = `Bạn là chuyên gia đánh giá nhân sự của WEHA GROUP. Hãy phân tích kết quả test ${session.testType} sau đây.
+  const dobStr = sessionDob
+    ? new Date(sessionDob).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" })
+    : "Chưa xác định";
+
+  const systemMessage = `Bạn là chuyên gia đánh giá nhân sự cấp cao của WEHA GROUP. Bạn luôn xưng hô ngôi thứ hai là "bạn" khi nói về nhân sự được đánh giá. TUYỆT ĐỐI KHÔNG dùng "ông", "ông ta", "anh", "chị", "họ", "người này", "nhân sự này". Luôn dùng "bạn" (VD: "bạn có khả năng...", "bạn nên...", "Điểm mạnh của bạn là..."). Giọng văn thân thiện, gần gũi như đang coaching trực tiếp cho người đó.`;
+
+  const prompt = `Hãy phân tích TOÀN DIỆN và CHI TIẾT kết quả DISC + Thần số học Pythagoras sau đây. Nhớ: LUÔN gọi người được đánh giá là "bạn", KHÔNG BAO GIỜ gọi là "ông", "ông ta", "anh ấy", "chị ấy" hay dùng tên riêng kèm ngôi thứ ba.
 
 Thông tin nhân sự:
-- Tên: ${session.user.name}
+- Tên: ${candidateName}
+- Ngày sinh: ${dobStr}
+- Nghề nghiệp / Bối cảnh: ${sessionOccupation || "Chưa xác định"}
 - Phòng ban: ${session.user.department || "Chưa xác định"}
 
-Loại test: ${session.testType} (${questionCount} câu hỏi)
-Kết quả điểm (đạt được / tối đa):
+═══ KẾT QUẢ DISC TEST (${questionCount} câu hỏi) ═══
 ${Object.entries(scores).map(([k, v]) => `- ${k} (${scoreDescriptions[k] || k}): ${v}/${maxScores[k] || "?"} điểm (${maxScores[k] ? Math.round((v / maxScores[k]) * 100) : "?"}%)`).join("\n")}
+${numerologyContext ? `\n═══ KẾT QUẢ THẦN SỐ HỌC PYTHAGORAS ═══${numerologyContext}` : ""}
 
-Câu trả lời chi tiết:
+═══ CÂU TRẢ LỜI CHI TIẾT ═══
 ${answersContext}
 
-Yêu cầu:
+Yêu cầu phân tích:
 - Tone: ${toneMap[tone as keyof typeof toneMap]}
 - Mục tiêu: ${objectiveMap[objective as keyof typeof objectiveMap]}
+${sessionOccupation ? `- Cân nhắc nghề nghiệp/bối cảnh "${sessionOccupation}" khi đưa ra nhận định` : ""}
 ${config?.customPrompt ? `- Hướng dẫn thêm: ${config.customPrompt}` : ""}
+- KẾT HỢP cả DISC và Thần số học để phân tích toàn diện — tìm điểm tương đồng và bổ sung giữa 2 hệ thống
+- Đưa ra nhận định sâu sắc, cụ thể, KHÔNG chung chung
+- Mỗi mục strengths/improvements/developmentPlan phải có ít nhất 3-4 items chi tiết
 
 Trả lời bằng JSON với format chính xác sau (KHÔNG có markdown, KHÔNG có code block):
-{"summary":"Tóm tắt 2-3 câu về profile nhân sự","strengths":["Điểm mạnh 1","Điểm mạnh 2","Điểm mạnh 3"],"improvements":["Cần cải thiện 1","Cần cải thiện 2"],"suitableRoles":["Vai trò phù hợp 1","Vai trò phù hợp 2"],"recommendation":"Khuyến nghị hành động cụ thể cho nhân sự này"}`;
+{"summary":"Tóm tắt 3-4 câu tổng quan về profile nhân sự, kết hợp DISC + thần số học","personalityProfile":"Phân tích chi tiết tính cách: DISC profile chính + phụ kết hợp với số chủ đạo và các chỉ số thần số học cho thấy điều gì về con người này (3-5 câu)","numerologyInsight":"Phân tích riêng về thần số học: số chủ đạo + sứ mệnh + linh hồn cho thấy tiềm năng ẩn giấu gì, hướng phát triển tự nhiên (3-5 câu)","strengths":["Điểm mạnh 1 (chi tiết)","Điểm mạnh 2","Điểm mạnh 3","Điểm mạnh 4"],"improvements":["Cần cải thiện 1 (chi tiết)","Cần cải thiện 2","Cần cải thiện 3"],"suitableRoles":["Vai trò phù hợp 1","Vai trò 2","Vai trò 3"],"developmentPlan":["Bước 1: Hành động cụ thể trong 1-3 tháng","Bước 2: Mục tiêu 3-6 tháng","Bước 3: Định hướng dài hạn"],"recommendation":"Khuyến nghị tổng hợp chi tiết cho người này, kết hợp cả DISC + thần số học (3-5 câu)"}`;
 
   const abortController = new AbortController();
   const timeout = setTimeout(() => abortController.abort(), 30_000);
 
   let response: Response;
   try {
-    response = await fetch("https://api.anthropic.com/v1/messages", {
+    response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": process.env.ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
+        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 1024,
-        messages: [{ role: "user", content: prompt }],
+        model: "llama-3.1-8b-instant",
+        messages: [
+          { role: "system", content: systemMessage },
+          { role: "user", content: prompt },
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: 2048,
+        temperature: 0.7,
       }),
       signal: abortController.signal,
     });
   } catch (err) {
     clearTimeout(timeout);
-    console.error("Claude API timeout or network error:", err);
-    return { insight: generateFallbackInsight(scores, session.testType, session.user.name, questionCount, maxScores), config };
+    console.error("Groq API timeout or network error:", err);
+    return { insight: generateFallbackInsight(scores, session.testType, candidateName, questionCount, maxScores), config };
   } finally {
     clearTimeout(timeout);
   }
 
   if (!response.ok) {
-    console.error("Claude API error:", response.status);
-    return { insight: generateFallbackInsight(scores, session.testType, session.user.name, questionCount, maxScores), config };
+    console.error("Groq API error:", response.status);
+    return { insight: generateFallbackInsight(scores, session.testType, candidateName, questionCount, maxScores), config };
   }
 
   const result = await response.json();
-  const text = result.content?.[0]?.text || "";
+  const text = result.choices?.[0]?.message?.content || "";
 
   try {
     const parsed = JSON.parse(text) as InsightResult;
     return { insight: parsed, config };
   } catch {
-    console.error("Failed to parse AI response, using fallback");
-    return { insight: generateFallbackInsight(scores, session.testType, session.user.name, questionCount, maxScores), config };
+    console.error("Failed to parse Groq response, using fallback");
+    return { insight: generateFallbackInsight(scores, session.testType, candidateName, questionCount, maxScores), config };
   }
 }
 
@@ -184,10 +225,13 @@ function generateFallbackInsight(
     default:
       return {
         summary: `${userName} đã hoàn thành bài test ${testType}.`,
+        personalityProfile: "Chưa có đủ dữ liệu để phân tích.",
+        numerologyInsight: "Cần cấu hình GROQ_API_KEY để nhận phân tích chi tiết.",
         strengths: ["Đã hoàn thành bài test"],
         improvements: ["Cần thêm dữ liệu để đánh giá"],
         suitableRoles: ["Chưa xác định"],
-        recommendation: "Vui lòng cấu hình ANTHROPIC_API_KEY để nhận AI Insight chi tiết.",
+        developmentPlan: ["Cấu hình GROQ_API_KEY để nhận kế hoạch phát triển"],
+        recommendation: "Vui lòng cấu hình GROQ_API_KEY để nhận AI Insight chi tiết.",
       };
   }
 }
@@ -241,9 +285,16 @@ function generateDISCFallback(scores: DISCScores, userName: string): InsightResu
 
   return {
     summary: `${userName} có profile ${profile.title} với ${dominant} chiếm ưu thế (${pct[dominant as keyof typeof pct]}%). Kết hợp với ${discDescriptions[secondary]?.split("—")[1]?.trim() || secondary}, tạo nên phong cách làm việc ${dominant === "D" ? "quyết đoán và hiệu quả" : dominant === "I" ? "năng động và kết nối" : dominant === "S" ? "ổn định và đáng tin cậy" : "cẩn thận và chất lượng"}.`,
+    personalityProfile: `Profile DISC chính: ${profile.title}. Chiều phụ: ${discDescriptions[secondary]?.split("—")[0]?.trim() || secondary}. Phong cách làm việc thiên về ${dominant === "D" ? "dẫn dắt, ra quyết định nhanh" : dominant === "I" ? "kết nối con người, truyền cảm hứng" : dominant === "S" ? "hỗ trợ, duy trì sự ổn định" : "phân tích, đảm bảo chất lượng"}.`,
+    numerologyInsight: "Cần cấu hình GROQ_API_KEY để nhận phân tích thần số học chi tiết từ AI.",
     strengths: profile.strengths,
     improvements: profile.improvements,
     suitableRoles: profile.roles,
+    developmentPlan: [
+      `Phát triển kỹ năng ${sorted[sorted.length - 1][0]} trong 1-3 tháng tới`,
+      `Tham gia các dự án đòi hỏi ${dominant === "D" ? "teamwork" : dominant === "I" ? "phân tích chi tiết" : dominant === "S" ? "ra quyết định nhanh" : "giao tiếp nhóm"}`,
+      `Định hướng dài hạn: cân bằng profile DISC để trở thành nhân sự toàn diện`,
+    ],
     recommendation: `Với profile ${dominant}${secondary}, ${userName} phù hợp nhất với các vai trò đòi hỏi ${dominant === "D" ? "khả năng lãnh đạo và ra quyết định" : dominant === "I" ? "giao tiếp và xây dựng quan hệ" : dominant === "S" ? "sự ổn định và hỗ trợ đồng đội" : "tư duy phân tích và đảm bảo chất lượng"}. Nên phát triển thêm kỹ năng từ chiều ${sorted[sorted.length - 1][0]} để cân bằng profile.`,
   };
 }
@@ -309,9 +360,16 @@ function generateLogicFallback(
 
   return {
     summary: `${userName} đạt ${correctCount}/${questionCount} câu đúng (${accuracy}%) trong bài Logic Test — mức ${level}. Điểm tư duy suy luận: ${reasoningPct}%.`,
+    personalityProfile: `Năng lực tư duy logic ở mức ${level}. Tỷ lệ chính xác ${accuracy}%, khả năng suy luận ${reasoningPct}%.`,
+    numerologyInsight: "Cần cấu hình GROQ_API_KEY để nhận phân tích thần số học chi tiết.",
     strengths,
     improvements,
     suitableRoles: roles,
+    developmentPlan: [
+      accuracy >= 80 ? "Tham gia các dự án chiến lược đòi hỏi phân tích phức tạp" : "Luyện tập tư duy logic 15 phút mỗi ngày",
+      "Tham gia khóa đào tạo tư duy phân tích nâng cao",
+      "Áp dụng tư duy logic vào quyết định công việc hàng ngày",
+    ],
     recommendation: accuracy >= 80
       ? `${userName} có tư duy logic rất tốt, phù hợp với các vị trí đòi hỏi phân tích dữ liệu và giải quyết vấn đề phức tạp. Nên khai thác thế mạnh này trong các dự án chiến lược.`
       : accuracy >= 60
@@ -364,7 +422,14 @@ function generateSituationFallback(
 
   return {
     summary: `${userName} thể hiện năng lực xử lý tình huống ở mức ${overallPct >= 70 ? "tốt" : overallPct >= 50 ? "khá" : "cần phát triển"} (${overallPct}%). Điểm mạnh nhất: ${strongest[1].label} (${strongest[1].score} điểm). Cần cải thiện: ${weakLabel} (${weakest[1].score} điểm).`,
+    personalityProfile: `Năng lực xử lý tình huống: ${strongest[1].label} là thế mạnh nổi bật, ${weakLabel} cần được phát triển thêm.`,
+    numerologyInsight: "Cần cấu hình GROQ_API_KEY để nhận phân tích thần số học chi tiết.",
     strengths: strongProfile.strengths,
+    developmentPlan: [
+      `Tập trung cải thiện ${weakLabel.toLowerCase()} trong 1-3 tháng`,
+      "Tham gia các buổi roleplay tình huống thực tế",
+      `Phát huy thế mạnh ${strongest[1].label.toLowerCase()} trong các dự án nhóm`,
+    ],
     improvements: [
       `Cần phát triển kỹ năng ${weakLabel.toLowerCase()}`,
       `Rèn luyện thêm qua các tình huống thực tế`,
