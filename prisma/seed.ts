@@ -1,6 +1,5 @@
 import "dotenv/config";
-import { PrismaClient } from "../src/generated/prisma/client";
-import { TestType, Role, AITone, AIObjective } from "../src/generated/prisma/enums";
+import { PrismaClient, TestType, Role, AITone, AIObjective } from "@prisma/client";
 import { hash } from "bcryptjs";
 
 const prisma = new PrismaClient();
