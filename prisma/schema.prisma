@@ -123,7 +123,7 @@ model TestSession {
   // Thông tin cá nhân nhập trước khi làm test
   candidateName String?   // Họ tên (có thể khác user.name)
   dateOfBirth   DateTime? // Ngày tháng năm sinh
-  occupation    String?   // Bối cảnh / nghề nghiệp
+  occupation    String?   // Nghề nghiệp
 
   // Điểm tổng hợp sau khi hoàn thành — JSON vì cấu trúc khác nhau per testType
   // DISC:      { "D": 18, "I": 12, "S": 8, "C": 15 }

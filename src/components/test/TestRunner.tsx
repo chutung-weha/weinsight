@@ -119,7 +119,7 @@ export function TestRunner({ theme, defaultCandidateName }: { theme: TestTheme; 
     if (name.length < 2) { setFormError("Vui lòng nhập họ tên (ít nhất 2 ký tự)"); return; }
     if (!day || !month || !year) { setFormError("Vui lòng chọn đầy đủ ngày tháng năm sinh"); return; }
     if (!isValidDate(day, month, year)) { setFormError("Ngày sinh không hợp lệ"); return; }
-    if (!occupation.trim()) { setFormError("Vui lòng nhập nghề nghiệp / bối cảnh"); return; }
+    if (!occupation.trim()) { setFormError("Vui lòng nhập nghề nghiệp"); return; }
 
     setFormSubmitting(true);
     const dob = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
@@ -231,10 +231,10 @@ export function TestRunner({ theme, defaultCandidateName }: { theme: TestTheme; 
                   </div>
                 </div>
 
-                {/* Nghề nghiệp / Bối cảnh */}
+                {/* Nghề nghiệp */}
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-1.5">
-                    Nghề nghiệp / Bối cảnh
+                    Nghề nghiệp
                   </label>
                   <input
                     type="text"

@@ -115,7 +115,7 @@ ${lifePathDesc ? `\nĐiểm mạnh theo thần số học: ${lifePathDesc.streng
 Thông tin nhân sự:
 - Tên: ${candidateName}
 - Ngày sinh: ${dobStr}
-- Nghề nghiệp / Bối cảnh: ${sessionOccupation || "Chưa xác định"}
+- Nghề nghiệp: ${sessionOccupation || "Chưa xác định"}
 - Phòng ban: ${session.user.department || "Chưa xác định"}
 
 ═══ KẾT QUẢ DISC TEST (${questionCount} câu hỏi) ═══
@@ -128,7 +128,7 @@ ${answersContext}
 Yêu cầu phân tích:
 - Tone: ${toneMap[tone as keyof typeof toneMap]}
 - Mục tiêu: ${objectiveMap[objective as keyof typeof objectiveMap]}
-${sessionOccupation ? `- Cân nhắc nghề nghiệp/bối cảnh "${sessionOccupation}" khi đưa ra nhận định` : ""}
+${sessionOccupation ? `- Cân nhắc nghề nghiệp "${sessionOccupation}" khi đưa ra nhận định` : ""}
 ${config?.customPrompt ? `- Hướng dẫn thêm: ${config.customPrompt}` : ""}
 - KẾT HỢP cả DISC và Thần số học để phân tích toàn diện — tìm điểm tương đồng và bổ sung giữa 2 hệ thống
 - Đưa ra nhận định sâu sắc, cụ thể, KHÔNG chung chung
