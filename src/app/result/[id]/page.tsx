@@ -219,7 +219,7 @@ export default function ResultPage() {
             </div>
           )}
           {insight && (
-            <p className="text-sm text-slate-400 max-w-lg mx-auto">{insight.summary}</p>
+            <p className="text-sm text-slate-400 max-w-lg mx-auto">{String(insight.summary || "")}</p>
           )}
         </div>
 
@@ -273,7 +273,7 @@ export default function ResultPage() {
                 {insight.personalityProfile && (
                   <div className="glass-sm p-5 bg-cyan-500/5 border-cyan-500/15 mb-5">
                     <div className="text-xs font-semibold text-cyan-300 mb-2">Phân tích tính cách (DISC + Thần số học)</div>
-                    <p className="text-sm text-slate-300 leading-relaxed">{insight.personalityProfile}</p>
+                    <p className="text-sm text-slate-300 leading-relaxed">{String(insight.personalityProfile || "")}</p>
                   </div>
                 )}
 
@@ -289,7 +289,7 @@ export default function ResultPage() {
                 <div className="glass-sm p-5 bg-blue-500/5 border-blue-500/15 mb-5">
                   <div className="text-xs font-semibold text-blue-300 mb-2">Vai trò phù hợp</div>
                   <div className="flex flex-wrap gap-2">
-                    {insight.suitableRoles.map((role) => (
+                    {(insight.suitableRoles || []).map((role) => (
                       <span key={role} className="text-sm font-semibold bg-blue-500/10 text-blue-300 px-3 py-1 rounded-full">
                         {role}
                       </span>
@@ -302,7 +302,7 @@ export default function ResultPage() {
                   <div>
                     <div className="text-xs font-semibold text-teal-400 uppercase tracking-wider mb-3">Điểm mạnh</div>
                     <div className="space-y-2">
-                      {insight.strengths.map((s) => (
+                      {(insight.strengths || []).map((s) => (
                         <div key={s} className="flex items-start gap-2 text-sm text-slate-300">
                           <span className="text-teal-400 shrink-0">✓</span> {s}
                         </div>
@@ -312,7 +312,7 @@ export default function ResultPage() {
                   <div>
                     <div className="text-xs font-semibold text-rose-400 uppercase tracking-wider mb-3">Cần phát triển</div>
                     <div className="space-y-2">
-                      {insight.improvements.map((item) => (
+                      {(insight.improvements || []).map((item) => (
                         <div key={item} className="flex items-start gap-2 text-sm text-slate-300">
                           <span className="text-rose-400 shrink-0">→</span> {item}
                         </div>
@@ -322,7 +322,7 @@ export default function ResultPage() {
                 </div>
 
                 {/* Kế hoạch phát triển */}
-                {insight.developmentPlan && insight.developmentPlan.length > 0 && (
+                {Array.isArray(insight.developmentPlan) && insight.developmentPlan.length > 0 && (
                   <div className="glass-sm p-5 bg-teal-500/5 border-teal-500/15 mb-5">
                     <div className="text-xs font-semibold text-teal-300 mb-3">Kế hoạch phát triển</div>
                     <div className="space-y-2.5">
@@ -339,7 +339,7 @@ export default function ResultPage() {
                 {/* Khuyến nghị */}
                 <div className="glass-sm p-5 bg-violet-500/5 border-violet-500/15">
                   <div className="text-xs font-semibold text-violet-300 mb-2">Khuyến nghị tổng hợp</div>
-                  <p className="text-sm text-slate-300 leading-relaxed">{insight.recommendation}</p>
+                  <p className="text-sm text-slate-300 leading-relaxed">{String(insight.recommendation || "")}</p>
                 </div>
               </>
             ) : (

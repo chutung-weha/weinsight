@@ -78,18 +78,17 @@ export async function GET(
       aiInsight: testSession.aiInsights[0]
         ? (() => {
             const ai = testSession.aiInsights[0];
-            // Parse fullResponse để lấy các fields mới (personalityProfile, numerologyInsight, developmentPlan)
             let extra: Record<string, unknown> = {};
             try { extra = JSON.parse(ai.fullResponse); } catch { /* ignore */ }
             return {
-              summary: ai.summary,
-              personalityProfile: (extra as Record<string, string>).personalityProfile || null,
-              numerologyInsight: (extra as Record<string, string>).numerologyInsight || null,
-              strengths: ai.strengths,
-              improvements: ai.improvements,
-              suitableRoles: ai.suitableRoles,
-              developmentPlan: (extra as Record<string, string[]>).developmentPlan || null,
-              recommendation: ai.recommendation,
+              summary: String(ai.summary || ""),
+              personalityProfile: typeof extra.personalityProfile === "string" ? extra.personalityProfile : null,
+              numerologyInsight: typeof extra.numerologyInsight === "string" ? extra.numerologyInsight : null,
+              strengths: Array.isArray(ai.strengths) ? (ai.strengths as string[]) : [],
+              improvements: Array.isArray(ai.improvements) ? (ai.improvements as string[]) : [],
+              suitableRoles: Array.isArray(ai.suitableRoles) ? (ai.suitableRoles as string[]) : [],
+              developmentPlan: Array.isArray(extra.developmentPlan) ? (extra.developmentPlan as string[]) : null,
+              recommendation: String(ai.recommendation || ""),
             };
           })()
         : null,
