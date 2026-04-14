@@ -103,6 +103,15 @@ export async function POST(
     return NextResponse.json({ success: false, error: "Phiên test chưa hoàn thành" }, { status: 400 });
   }
 
+  // Nếu đã có insight → trả lại luôn, không tạo mới (chống duplicate)
+  const existingInsight = await prisma.aIInsight.findFirst({
+    where: { sessionId },
+    orderBy: { createdAt: "desc" },
+  });
+  if (existingInsight) {
+    return NextResponse.json({ success: true, data: existingInsight });
+  }
+
   try {
     const { insight: result, config } = await generateInsight({ sessionId });
 

@@ -9,24 +9,30 @@ export async function middleware(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
   const { pathname } = req.nextUrl;
 
-  if (token && authRoutes.some((route) => pathname.startsWith(route))) {
+  // User bị disable hoặc chưa đăng nhập: token.id sẽ là undefined
+  const isAuthenticated = !!token?.id && !token?.disabled;
+
+  // Đã đăng nhập → redirect khỏi trang auth
+  if (isAuthenticated && authRoutes.some((route) => pathname.startsWith(route))) {
     return NextResponse.redirect(new URL("/", req.url));
   }
 
-  if (!token && protectedRoutes.some((route) => pathname.startsWith(route))) {
+  // Chưa đăng nhập → redirect tới login
+  if (!isAuthenticated && protectedRoutes.some((route) => pathname.startsWith(route))) {
     const loginUrl = new URL("/dang-nhap", req.url);
     loginUrl.searchParams.set("callbackUrl", pathname);
     return NextResponse.redirect(loginUrl);
   }
 
+  // Admin routes: cần authenticated + role phù hợp
   if (pathname.startsWith("/admin")) {
-    if (!token) {
+    if (!isAuthenticated) {
       const loginUrl = new URL("/dang-nhap", req.url);
       loginUrl.searchParams.set("callbackUrl", pathname);
       return NextResponse.redirect(loginUrl);
     }
 
-    if (token.role !== "ADMIN" && token.role !== "HR") {
+    if (token!.role !== "ADMIN" && token!.role !== "HR") {
       return NextResponse.redirect(new URL("/", req.url));
     }
   }

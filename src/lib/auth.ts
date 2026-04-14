@@ -68,7 +68,11 @@ export const authOptions: NextAuthOptions = {
           select: { role: true, active: true, name: true },
         });
         if (!dbUser || !dbUser.active) {
+          // Xóa sạch token data → middleware sẽ coi như chưa đăng nhập
           token.id = undefined;
+          token.role = undefined;
+          token.name = undefined;
+          token.disabled = true;
           return token;
         }
         token.role = dbUser.role;

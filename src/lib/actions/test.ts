@@ -49,23 +49,45 @@ export async function startTest(data: StartTestInput) {
   });
 
   if (existing) {
-    // Cập nhật pre-test info nếu có
-    if (parsed.data.candidateName || parsed.data.dateOfBirth || parsed.data.occupation) {
+    // Kiểm tra xem answers cũ có thuộc questions đang active không
+    // Nếu có answer thuộc question đã inactive → abandon session cũ, tạo mới
+    const activeQuestionIds = new Set(
+      (await prisma.question.findMany({
+        where: { testType: testType as TestType, active: true },
+        select: { id: true },
+      })).map((q) => q.id)
+    );
+
+    const hasStaleAnswers = existing.answers.some(
+      (answer) => !activeQuestionIds.has(answer.questionId)
+    );
+
+    if (hasStaleAnswers) {
+      // Abandon session cũ
       await prisma.testSession.update({
         where: { id: existing.id },
-        data: {
-          candidateName: parsed.data.candidateName ?? existing.candidateName,
-          dateOfBirth: parsed.data.dateOfBirth ? new Date(parsed.data.dateOfBirth) : existing.dateOfBirth,
-          occupation: parsed.data.occupation ?? existing.occupation,
-        },
+        data: { status: "ABANDONED" },
       });
+      // Tiếp tục tạo session mới (fall through)
+    } else {
+      // Session vẫn hợp lệ → resume
+      if (parsed.data.candidateName || parsed.data.dateOfBirth || parsed.data.occupation) {
+        await prisma.testSession.update({
+          where: { id: existing.id },
+          data: {
+            candidateName: parsed.data.candidateName ?? existing.candidateName,
+            dateOfBirth: parsed.data.dateOfBirth ? new Date(parsed.data.dateOfBirth) : existing.dateOfBirth,
+            occupation: parsed.data.occupation ?? existing.occupation,
+          },
+        });
+      }
+      return {
+        success: true as const,
+        sessionId: existing.id,
+        answeredQuestionIds: existing.answers.map((answer) => answer.questionId),
+        hasPreTestInfo: !!(existing.candidateName || parsed.data.candidateName),
+      };
     }
-    return {
-      success: true as const,
-      sessionId: existing.id,
-      answeredQuestionIds: existing.answers.map((answer) => answer.questionId),
-      hasPreTestInfo: !!(existing.candidateName || parsed.data.candidateName),
-    };
   }
 
   const session = await prisma.testSession.create({

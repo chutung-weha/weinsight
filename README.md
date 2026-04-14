@@ -1,36 +1,124 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# WE INSIGHT
 
-## Getting Started
+Hệ thống đánh giá nhân sự + AI Coach của **WEHA GROUP**.
 
-First, run the development server:
+User làm test (DISC, Logic, Situation) + Thần số học Pythagoras → AI phân tích → Insight & khuyến nghị nhân sự.
+
+## Tech Stack
+
+- **Frontend**: Next.js 15 (App Router), React 19, TypeScript, Tailwind CSS 4
+- **Backend**: Next.js API Routes + Server Actions
+- **Database**: PostgreSQL + Prisma 6
+- **Auth**: NextAuth v4 (Google OAuth, JWT)
+- **AI**: Groq API (LLaMA 3.1) với rule-based fallback
+- **Design**: Liquid Glass (Apple-style glassmorphism)
+
+## Cài đặt
 
 ```bash
+# Clone repo
+git clone https://github.com/chutung-weha/weinsight.git
+cd weinsight
+
+# Cài dependencies
+npm install
+
+# Copy và cấu hình env
+cp .env.example .env
+# Điền các giá trị vào .env (xem phần Environment Variables)
+
+# Khởi tạo database
+npx prisma migrate dev
+npx tsx prisma/seed.ts
+
+# Chạy dev server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Mở [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Environment Variables
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Biến | Bắt buộc | Mô tả |
+|------|----------|-------|
+| `DATABASE_URL` | Yes | PostgreSQL connection string (hỗ trợ Supabase PgBouncer) |
+| `DIRECT_URL` | Yes | Direct PostgreSQL connection (cho migrations) |
+| `NEXTAUTH_SECRET` | Yes | `openssl rand -base64 32` |
+| `NEXTAUTH_URL` | Yes | `http://localhost:3000` (dev) hoặc domain production |
+| `GOOGLE_CLIENT_ID` | Yes | Google Cloud Console → APIs & Services → Credentials |
+| `GOOGLE_CLIENT_SECRET` | Yes | Cùng nguồn với Client ID |
+| `GROQ_API_KEY` | No | [console.groq.com/keys](https://console.groq.com/keys) — không có thì dùng rule-based fallback |
 
-## Learn More
+## Scripts
 
-To learn more about Next.js, take a look at the following resources:
+| Script | Mô tả |
+|--------|-------|
+| `npm run dev` | Chạy dev server |
+| `npm run build` | Build production |
+| `npm run lint` | ESLint (quality gate) |
+| `npm run db:migrate` | Chạy Prisma migrations |
+| `npm run db:seed` | Seed data (admin, demo user, câu hỏi mẫu) |
+| `npm run db:studio` | Mở Prisma Studio |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Cấu trúc thư mục
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```
+src/
+├── app/
+│   ├── (auth)/           # Đăng nhập (/dang-nhap), Đăng ký (/dang-ky)
+│   ├── admin/            # Admin dashboard (ADMIN/HR only)
+│   ├── api/              # Auth, test questions, result, insight APIs
+│   ├── test/             # Test selection + DISC/Logic/Situation pages
+│   ├── than-so-hoc/      # Thần số học Pythagoras
+│   └── result/[id]/      # Kết quả test + AI Insight
+├── components/
+│   ├── layout/           # Header, Footer, Logo
+│   ├── numerology/       # NumerologyPage (form + result)
+│   └── test/             # TestRunner (shared MCQ test component)
+├── lib/
+│   ├── actions/          # Server Actions (test flow, numerology)
+│   ├── ai/               # AI insight generation (Groq API + fallback)
+│   ├── validations/      # Zod schemas
+│   ├── auth.ts           # NextAuth config (Google OAuth)
+│   ├── env.ts            # Runtime env validation
+│   ├── numerology.ts     # Pythagoras calculation engine
+│   ├── prisma.ts         # Prisma client singleton
+│   ├── rate-limit.ts     # In-memory rate limiter
+│   └── scoring.ts        # Score computation (dynamic maxScores)
+└── types/                # TypeScript types + NextAuth augmentation
+```
 
-## Deploy on Vercel
+## Tính năng
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Bài test
+- **DISC**: 20 câu đánh giá tính cách (D/I/S/C dimensions)
+- **Logic**: 15 câu tư duy logic (rubric 0/1/3)
+- **Situation**: 10 câu xử lý tình huống (4 chiều: leadership/teamwork/communication/problemSolving)
+- **Thần số học**: 6 chỉ số Pythagoras từ họ tên + ngày sinh
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### AI Insight
+- Groq API (LLaMA 3.1) phân tích kết quả test + thần số học
+- Rule-based fallback khi không có API key
+- Cấu hình tone (thẳng/nhẹ/coach) và mục tiêu (tuyển dụng/đào tạo/đánh giá)
+- Output: summary, strengths, improvements, suitable roles, development plan
+
+### Auth & Security
+- Google OAuth (tài khoản tự tạo lần đầu đăng nhập)
+- JWT session + 1-phút role sync từ DB
+- Middleware route protection (test, result, admin)
+- Security headers (HSTS, CSP, X-Frame-Options, etc.)
+- Rate limiting (5 req/user/phút cho AI insight)
+- Input sanitization chống prompt injection
+
+## Deploy (Vercel)
+
+1. Push code lên GitHub
+2. Import repo vào Vercel
+3. Thêm tất cả env vars (đặc biệt `NEXTAUTH_URL` = production domain)
+4. Vercel tự chạy `npm run build` (bao gồm `prisma generate`)
+
+Database khuyến nghị: Supabase PostgreSQL (free tier) với PgBouncer.
+
+## License
+
+Private — WEHA GROUP internal use.
