@@ -55,7 +55,7 @@ export function TestRunner({ theme, defaultCandidateName }: { theme: TestTheme; 
   const [current, setCurrent] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -305,11 +305,12 @@ export function TestRunner({ theme, defaultCandidateName }: { theme: TestTheme; 
   }
 
   // ─── QUESTIONS STEP ────────────────────────────────────
-  const progress = (current / questions.length) * 100;
+  const progress = ((current + 1) / questions.length) * 100;
   const question = questions[current];
 
   async function handleNext() {
     if (!selected || !sessionId || !question) return;
+    setError("");
     setSubmitting(true);
 
     const result = await submitAnswer({
@@ -327,7 +328,7 @@ export function TestRunner({ theme, defaultCandidateName }: { theme: TestTheme; 
     if (current < questions.length - 1) {
       setIsTransitioning(true);
       setTimeout(() => {
-        setCurrent(current + 1);
+        setCurrent((c) => c + 1);
         setSelected(null);
         setIsTransitioning(false);
         setSubmitting(false);

@@ -191,7 +191,7 @@ export function NumerologyPage() {
                 <div className="relative">
                   <svg width={140} height={140} viewBox="0 0 120 120">
                     <circle cx={60} cy={60} r={50} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={8} />
-                    <circle cx={60} cy={60} r={50} fill="none" stroke="url(#numRing)" strokeWidth={8} strokeLinecap="round" strokeDasharray={314} strokeDashoffset={314 - (314 * Math.min(result.lifePath, 9)) / 9} transform="rotate(-90 60 60)" />
+                    <circle cx={60} cy={60} r={50} fill="none" stroke="url(#numRing)" strokeWidth={8} strokeLinecap="round" strokeDasharray={314} strokeDashoffset={314 - (314 * result.lifePath) / 22} transform="rotate(-90 60 60)" />
                     <defs>
                       <linearGradient id="numRing" x1="0%" y1="0%" x2="100%" y2="0%">
                         <stop offset="0%" stopColor="#F59E0B" />

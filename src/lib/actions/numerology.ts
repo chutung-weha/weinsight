@@ -17,11 +17,12 @@ export async function saveNumerologyResult(data: NumerologyFormInput) {
   // Tính toán server-side (defense in depth)
   const result = calculateAll(fullName, day, month, year);
 
-  // Check duplicate: nếu đã có session NUMEROLOGY với cùng scores trong 1 phút → trả lại session cũ
+  // Check duplicate: nếu đã có session NUMEROLOGY với cùng input trong 1 phút → trả lại session cũ
   const recent = await prisma.testSession.findFirst({
     where: {
       userId: user.id,
       testType: "NUMEROLOGY",
+      candidateName: fullName,
       completedAt: { gte: new Date(Date.now() - 60_000) },
     },
     orderBy: { completedAt: "desc" },
@@ -31,12 +32,16 @@ export async function saveNumerologyResult(data: NumerologyFormInput) {
     return { success: true as const, sessionId: recent.id };
   }
 
+  const dob = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+
   const session = await prisma.testSession.create({
     data: {
       userId: user.id,
       testType: "NUMEROLOGY",
       status: "COMPLETED",
       completedAt: new Date(),
+      candidateName: fullName,
+      dateOfBirth: dob,
       totalScores: { ...result },
     },
   });

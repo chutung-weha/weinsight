@@ -1,25 +1,51 @@
 /**
- * In-memory sliding window rate limiter.
- * MVP — đủ cho single-instance. Upgrade sang Redis khi scale.
+ * Sliding window rate limiter.
+ *
+ * LƯU Ý: Store dựa trên Map trong bộ nhớ process.
+ * - Hoạt động tốt trên single-instance (dev, VPS, Docker 1 replica).
+ * - Trên Vercel serverless: mỗi cold-start tạo Map mới, nên rate limit
+ *   chỉ hiệu quả trong cùng 1 warm instance. Để production-grade,
+ *   thay bằng @upstash/ratelimit + Upstash Redis.
+ *
+ * Cải thiện so với phiên bản cũ:
+ * - LRU eviction khi store vượt MAX_KEYS (chống memory leak)
+ * - Cleanup dùng đúng windowMs thay vì hardcode
+ * - Không dùng setInterval (tương thích serverless)
  */
+
+const MAX_KEYS = 10_000;
 
 interface RateLimitEntry {
   timestamps: number[];
 }
 
 const store = new Map<string, RateLimitEntry>();
+let lastCleanup = Date.now();
 
-// Cleanup expired entries mỗi 5 phút
-setInterval(() => {
+function cleanup(windowMs: number) {
   const now = Date.now();
+  // Cleanup tối đa mỗi 60 giây
+  if (now - lastCleanup < 60_000) return;
+  lastCleanup = now;
+
   for (const [key, entry] of store.entries()) {
-    entry.timestamps = entry.timestamps.filter((t) => now - t < 120_000);
+    entry.timestamps = entry.timestamps.filter((t) => now - t < windowMs);
     if (entry.timestamps.length === 0) store.delete(key);
   }
-}, 5 * 60 * 1000);
+
+  // LRU eviction nếu store quá lớn
+  if (store.size > MAX_KEYS) {
+    const keysToDelete = store.size - MAX_KEYS;
+    const iterator = store.keys();
+    for (let i = 0; i < keysToDelete; i++) {
+      const key = iterator.next().value;
+      if (key) store.delete(key);
+    }
+  }
+}
 
 interface RateLimitOptions {
-  windowMs: number; // sliding window in ms
+  windowMs: number;
   maxRequests: number;
 }
 
@@ -30,6 +56,8 @@ interface RateLimitResult {
 }
 
 export function checkRateLimit(key: string, options: RateLimitOptions): RateLimitResult {
+  cleanup(options.windowMs);
+
   const now = Date.now();
   const entry = store.get(key) || { timestamps: [] };
 

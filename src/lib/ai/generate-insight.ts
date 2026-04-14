@@ -19,6 +19,19 @@ interface InsightResult {
   recommendation: string;
 }
 
+/**
+ * Sanitize user input trước khi đưa vào LLM prompt.
+ * Loại bỏ ký tự điều khiển, cắt độ dài, ngăn prompt injection cơ bản.
+ */
+function sanitizeForPrompt(input: string | null | undefined, maxLength = 200): string {
+  if (!input) return "";
+  return input
+    .replace(/[\x00-\x1F\x7F]/g, "") // remove control characters
+    .replace(/\n{3,}/g, "\n\n")       // collapse excessive newlines
+    .trim()
+    .slice(0, maxLength);
+}
+
 // DISC profile descriptions cho AI prompt context
 const discDescriptions: Record<string, string> = {
   D: "Dominance — Quyết đoán, tập trung kết quả, thích thách thức",
@@ -57,9 +70,9 @@ export async function generateInsight({ sessionId }: GenerateInsightInput): Prom
   const scores = session.totalScores as Record<string, number>;
   const tone = config?.tone || "COACH";
   const objective = config?.objective || "EVALUATION";
-  const candidateName = session.candidateName || session.user.name;
+  const candidateName = sanitizeForPrompt(session.candidateName || session.user.name || "Ứng viên", 100);
   const sessionDob = session.dateOfBirth;
-  const sessionOccupation = session.occupation;
+  const sessionOccupation = sanitizeForPrompt(session.occupation, 100);
 
   const { maxScores, questionCount } = await computeScoreMeta(session.testType);
 
@@ -85,7 +98,7 @@ ${lifePathDesc ? `\nĐiểm mạnh theo thần số học: ${lifePathDesc.streng
     return { insight: generateFallbackInsight(scores, session.testType, candidateName, questionCount, maxScores), config };
   }
 
-  // Gọi Gemini API
+  // Gọi Groq API
   const toneMap = {
     DIRECT: "thẳng thắn, ngắn gọn, tập trung vào kết luận",
     GENTLE: "nhẹ nhàng, khích lệ, tập trung điểm mạnh trước",
@@ -129,7 +142,7 @@ Yêu cầu phân tích:
 - Tone: ${toneMap[tone as keyof typeof toneMap]}
 - Mục tiêu: ${objectiveMap[objective as keyof typeof objectiveMap]}
 ${sessionOccupation ? `- Cân nhắc nghề nghiệp "${sessionOccupation}" khi đưa ra nhận định` : ""}
-${config?.customPrompt ? `- Hướng dẫn thêm: ${config.customPrompt}` : ""}
+${config?.customPrompt ? `- Hướng dẫn thêm: ${sanitizeForPrompt(config.customPrompt, 500)}` : ""}
 - KẾT HỢP cả DISC và Thần số học để phân tích toàn diện — tìm điểm tương đồng và bổ sung giữa 2 hệ thống
 - Đưa ra nhận định sâu sắc, cụ thể, KHÔNG chung chung
 - Mỗi mục strengths/improvements/developmentPlan phải có ít nhất 3-4 items chi tiết
@@ -173,14 +186,21 @@ Trả lời bằng JSON với format chính xác sau (KHÔNG có markdown, KHÔN
     return { insight: generateFallbackInsight(scores, session.testType, candidateName, questionCount, maxScores), config };
   }
 
-  const result = await response.json();
+  let result;
+  try {
+    result = await response.json();
+  } catch {
+    console.error("Groq response is not valid JSON, using fallback");
+    return { insight: generateFallbackInsight(scores, session.testType, candidateName, questionCount, maxScores), config };
+  }
+
   const text = result.choices?.[0]?.message?.content || "";
 
   try {
     const parsed = JSON.parse(text) as InsightResult;
     return { insight: parsed, config };
   } catch {
-    console.error("Failed to parse Groq response, using fallback");
+    console.error("Failed to parse Groq response content, using fallback");
     return { insight: generateFallbackInsight(scores, session.testType, candidateName, questionCount, maxScores), config };
   }
 }

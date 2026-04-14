@@ -49,7 +49,6 @@ export async function GET(
       improvements: insight.improvements,
       suitableRoles: insight.suitableRoles,
       recommendation: insight.recommendation,
-      fullResponse: insight.fullResponse,
       tone: insight.tone,
       objective: insight.objective,
       createdAt: insight.createdAt,

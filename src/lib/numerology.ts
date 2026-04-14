@@ -52,11 +52,11 @@ function letterToNumber(char: string): number {
 
 // ─── Tính từ ngày sinh ────────────────────────────────
 
-/** Số chủ đạo: tổng từng nhóm ngày+tháng+năm → rút gọn (giữ 11, 22) */
+/** Số chủ đạo: tổng từng nhóm ngày+tháng+năm → rút gọn (giữ 11, 22 ở mỗi bước trung gian) */
 export function calculateLifePath(day: number, month: number, year: number): number {
-  const dayReduced = reduceToDigit(sumDigits(day));
-  const monthReduced = reduceToDigit(sumDigits(month));
-  const yearReduced = reduceToDigit(sumDigits(year));
+  const dayReduced = reduceToDigit(sumDigits(day), true);
+  const monthReduced = reduceToDigit(sumDigits(month), true);
+  const yearReduced = reduceToDigit(sumDigits(year), true);
   return reduceToDigit(dayReduced + monthReduced + yearReduced, true);
 }
 
@@ -81,19 +81,15 @@ function sumNameLetters(
   filter: "all" | "vowels" | "consonants"
 ): number {
   const cleaned = stripVietnameseDiacritics(name);
-  const words = cleaned.split(/\s+/).filter(Boolean);
 
-  // Rút gọn từng từ trước, rồi cộng
+  // Cộng tất cả chữ cái trước, rồi reduce 1 lần (chuẩn Pythagoras)
   let total = 0;
-  for (const word of words) {
-    let wordSum = 0;
-    for (const char of word) {
-      const isVowel = VOWELS.has(char);
-      if (filter === "vowels" && !isVowel) continue;
-      if (filter === "consonants" && isVowel) continue;
-      wordSum += letterToNumber(char);
-    }
-    total += reduceToDigit(wordSum);
+  for (const char of cleaned) {
+    if (char === " ") continue;
+    const isVowel = VOWELS.has(char);
+    if (filter === "vowels" && !isVowel) continue;
+    if (filter === "consonants" && isVowel) continue;
+    total += letterToNumber(char);
   }
   return total;
 }

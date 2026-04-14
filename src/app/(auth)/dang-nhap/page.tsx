@@ -5,9 +5,16 @@ import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import Link from "next/link";
 
+function sanitizeCallbackUrl(url: string | null): string {
+  if (!url) return "/test";
+  // Chỉ chấp nhận relative path, chặn open redirect
+  if (!url.startsWith("/") || url.startsWith("//")) return "/test";
+  return url;
+}
+
 function LoginContent() {
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get("callbackUrl") || "/test";
+  const callbackUrl = sanitizeCallbackUrl(searchParams.get("callbackUrl"));
   const error = searchParams.get("error");
 
   return (
