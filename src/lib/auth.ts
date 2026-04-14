@@ -24,22 +24,54 @@ export const authOptions: NextAuthOptions = {
     async signIn({ user, account }) {
       if (account?.provider !== "google" || !user.email) return false;
 
-      // Upsert user: tạo mới nếu chưa có, update name/avatar nếu đã có
-      await prisma.user.upsert({
-        where: { email: user.email },
-        update: {
-          name: user.name || "User",
-          avatarUrl: user.image || null,
-          googleId: account.providerAccountId,
-        },
-        create: {
-          email: user.email,
-          name: user.name || "User",
-          avatarUrl: user.image || null,
-          googleId: account.providerAccountId,
-          role: "CANDIDATE",
-        },
-      });
+      try {
+        // Tìm user theo googleId trước (handle email change), fallback theo email
+        const existingByGoogleId = account.providerAccountId
+          ? await prisma.user.findUnique({ where: { googleId: account.providerAccountId } })
+          : null;
+
+        const existingByEmail = existingByGoogleId
+          ? null
+          : await prisma.user.findUnique({ where: { email: user.email } });
+
+        const existing = existingByGoogleId || existingByEmail;
+
+        if (existing) {
+          // User bị disable → chặn đăng nhập ngay
+          if (!existing.active) return false;
+
+          // Update thông tin mới nhất từ Google
+          await prisma.user.update({
+            where: { id: existing.id },
+            data: {
+              name: user.name || existing.name,
+              email: user.email, // cập nhật email mới nếu thay đổi trên Google
+              avatarUrl: user.image || null,
+              googleId: account.providerAccountId,
+            },
+          });
+        } else {
+          // Tạo user mới
+          await prisma.user.create({
+            data: {
+              email: user.email,
+              name: user.name || "User",
+              avatarUrl: user.image || null,
+              googleId: account.providerAccountId,
+              role: "CANDIDATE",
+            },
+          });
+        }
+      } catch (err) {
+        // Handle unique constraint race condition
+        const prismaError = err as { code?: string };
+        if (prismaError.code === "P2002") {
+          // Concurrent signup — user đã được tạo bởi request khác, cho phép đăng nhập
+          return true;
+        }
+        console.error("SignIn error:", err);
+        return false;
+      }
 
       return true;
     },
@@ -47,14 +79,21 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user, account }) {
       // Lần đầu đăng nhập: lấy user từ DB
       if (account && user?.email) {
-        const dbUser = await prisma.user.findUnique({
-          where: { email: user.email },
+        // Tìm theo googleId trước, fallback email
+        const dbUser = await prisma.user.findFirst({
+          where: {
+            OR: [
+              { googleId: account.providerAccountId },
+              { email: user.email },
+            ],
+          },
           select: { id: true, role: true, active: true, name: true },
         });
-        if (dbUser) {
+        if (dbUser && dbUser.active) {
           token.id = dbUser.id;
           token.role = dbUser.role;
           token.name = dbUser.name;
+          token.disabled = false;
           token.lastChecked = Date.now();
         }
       }
@@ -77,6 +116,7 @@ export const authOptions: NextAuthOptions = {
         }
         token.role = dbUser.role;
         token.name = dbUser.name;
+        token.disabled = false;
         token.lastChecked = now;
       }
 
@@ -84,7 +124,7 @@ export const authOptions: NextAuthOptions = {
     },
 
     async session({ session, token }) {
-      if (token.id) {
+      if (token.id && !token.disabled) {
         session.user.id = token.id as string;
         session.user.role = (token.role as "ADMIN" | "HR" | "CANDIDATE") ?? "CANDIDATE";
       }

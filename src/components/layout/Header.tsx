@@ -84,8 +84,9 @@ function UserMenu() {
 }
 
 export function Header() {
-  const { status } = useSession();
+  const { data: session, status } = useSession();
   const [menuOpen, setMenuOpen] = useState(false);
+  const isAdmin = session?.user?.role === "ADMIN" || session?.user?.role === "HR";
 
   return (
     <header className="sticky top-0 z-50 bg-[#0B1120]/80 backdrop-blur-2xl border-b border-white/10">
@@ -144,14 +145,28 @@ export function Header() {
                 {item.label}
               </Link>
             ))}
-            <div className="flex gap-3 pt-3 border-t border-white/10">
+            <div className="flex flex-col gap-3 pt-3 border-t border-white/10">
               {status === "authenticated" ? (
-                <button
-                  onClick={() => signOut({ callbackUrl: "/" })}
-                  className="btn-ghost text-sm"
-                >
-                  Đăng xuất
-                </button>
+                <>
+                  {session?.user?.name && (
+                    <p className="text-xs text-slate-500 px-1">{session.user.name}</p>
+                  )}
+                  {isAdmin && (
+                    <Link
+                      href="/admin/dashboard"
+                      onClick={() => setMenuOpen(false)}
+                      className="btn-ghost text-sm text-left"
+                    >
+                      Admin Dashboard
+                    </Link>
+                  )}
+                  <button
+                    onClick={() => signOut({ callbackUrl: "/" })}
+                    className="btn-ghost text-sm text-left"
+                  >
+                    Đăng xuất
+                  </button>
+                </>
               ) : (
                 <>
                   <Link href="/dang-nhap" className="btn-ghost text-sm">Đăng nhập</Link>

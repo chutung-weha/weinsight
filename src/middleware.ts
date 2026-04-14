@@ -17,10 +17,13 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL("/", req.url));
   }
 
+  // Giữ full URL (pathname + query string) cho callbackUrl
+  const fullPath = pathname + req.nextUrl.search;
+
   // Chưa đăng nhập → redirect tới login
   if (!isAuthenticated && protectedRoutes.some((route) => pathname.startsWith(route))) {
     const loginUrl = new URL("/dang-nhap", req.url);
-    loginUrl.searchParams.set("callbackUrl", pathname);
+    loginUrl.searchParams.set("callbackUrl", fullPath);
     return NextResponse.redirect(loginUrl);
   }
 
@@ -28,11 +31,11 @@ export async function middleware(req: NextRequest) {
   if (pathname.startsWith("/admin")) {
     if (!isAuthenticated) {
       const loginUrl = new URL("/dang-nhap", req.url);
-      loginUrl.searchParams.set("callbackUrl", pathname);
+      loginUrl.searchParams.set("callbackUrl", fullPath);
       return NextResponse.redirect(loginUrl);
     }
 
-    if (token!.role !== "ADMIN" && token!.role !== "HR") {
+    if (token?.role !== "ADMIN" && token?.role !== "HR") {
       return NextResponse.redirect(new URL("/", req.url));
     }
   }
