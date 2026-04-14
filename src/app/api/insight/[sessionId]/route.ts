@@ -58,9 +58,16 @@ export async function GET(
 
 // POST — Generate new insight cho session
 export async function POST(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
+  // CSRF: kiểm tra Origin header
+  const origin = req.headers.get("origin");
+  const host = req.headers.get("host");
+  if (origin && host && !origin.includes(host)) {
+    return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+  }
+
   const authSession = await getServerSession(authOptions);
   if (!authSession?.user) {
     return NextResponse.json({ success: false, error: "Chưa đăng nhập" }, { status: 401 });

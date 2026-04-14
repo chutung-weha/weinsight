@@ -114,7 +114,7 @@ ${lifePathDesc ? `\nĐiểm mạnh theo thần số học: ${lifePathDesc.streng
   const scoreDescriptions = getScoreDescriptions(session.testType);
 
   const answersContext = session.answers
-    .map((a) => `Q: ${a.question.content}\nA: ${a.answer.text}`)
+    .map((a) => `Q: ${sanitizeForPrompt(a.question.content, 500)}\nA: ${sanitizeForPrompt(a.answer.text, 500)}`)
     .join("\n\n");
 
   const dobStr = sessionDob
