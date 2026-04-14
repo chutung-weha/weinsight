@@ -15,7 +15,7 @@ paths:
 
 ## Admin Side (Config Engine)
 
-5. **Dashboard** `/admin` — Danh sách user, điểm, rank, filter (phòng ban, điểm)
+5. **Dashboard** `/admin` — Danh sách user, điểm, rank, filter (đơn vị, điểm)
 6. **Chi tiết user** `/admin/user/[id]` — Full câu trả lời, điểm từng phần, numerology, AI Insight
 7. **Quản lý câu hỏi** `/admin/cau-hoi` — CRUD câu hỏi (DISC, Logic, Situation), mỗi câu: nội dung + 4 đáp án + mapping điểm
 8. **Upload tri thức AI** `/admin/tri-thuc` — Drag & drop file (PDF/DOC/Text), list file đã upload, trạng thái xử lý (RAG)

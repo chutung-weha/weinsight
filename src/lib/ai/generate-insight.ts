@@ -116,7 +116,7 @@ Thông tin nhân sự:
 - Tên: ${candidateName}
 - Ngày sinh: ${dobStr}
 - Nghề nghiệp: ${sessionOccupation || "Chưa xác định"}
-- Phòng ban: ${session.user.department || "Chưa xác định"}
+- Đơn vị: ${session.user.department || "Chưa xác định"}
 
 ═══ KẾT QUẢ DISC TEST (${questionCount} câu hỏi) ═══
 ${Object.entries(scores).map(([k, v]) => `- ${k} (${scoreDescriptions[k] || k}): ${v}/${maxScores[k] || "?"} điểm (${maxScores[k] ? Math.round((v / maxScores[k]) * 100) : "?"}%)`).join("\n")}

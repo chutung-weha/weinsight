@@ -2,7 +2,7 @@ import { getToken } from "next-auth/jwt";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const authRoutes = ["/dang-nhap", "/dang-ky"];
+const authRoutes = ["/dang-nhap"];
 const protectedRoutes = ["/test", "/result", "/ho-so", "/history", "/than-so-hoc"];
 
 export async function middleware(req: NextRequest) {

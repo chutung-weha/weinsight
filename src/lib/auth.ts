@@ -1,49 +1,12 @@
 import type { NextAuthOptions } from "next-auth";
-import CredentialsProvider from "next-auth/providers/credentials";
-import { compare, hash } from "bcryptjs";
+import GoogleProvider from "next-auth/providers/google";
 import { prisma } from "@/lib/prisma";
-
-// Dummy hash để constant-time compare khi user không tồn tại (chống timing attack)
-const DUMMY_HASH = "$2a$12$000000000000000000000uGJBEjz0dQ7S2VCh3FY.1C0YM0HxHHi";
 
 export const authOptions: NextAuthOptions = {
   providers: [
-    CredentialsProvider({
-      name: "credentials",
-      credentials: {
-        email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" },
-      },
-      async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) {
-          throw new Error("Vui lòng nhập email và mật khẩu");
-        }
-
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email },
-        });
-
-        // Luôn chạy bcrypt compare để giữ constant time — chống timing attack
-        const isValid = await compare(
-          credentials.password,
-          user?.passwordHash || DUMMY_HASH
-        );
-
-        if (!user || !isValid) {
-          throw new Error("Email hoặc mật khẩu không đúng");
-        }
-
-        if (!user.active) {
-          throw new Error("Tài khoản đã bị vô hiệu hóa");
-        }
-
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role,
-        };
-      },
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
     }),
   ],
 
@@ -57,23 +20,53 @@ export const authOptions: NextAuthOptions = {
   },
 
   callbacks: {
-    async jwt({ token, user }) {
-      // Lần đầu đăng nhập: attach user info vào token
-      if (user) {
-        token.id = user.id;
-        token.role = user.role;
+    async signIn({ user, account }) {
+      if (account?.provider !== "google" || !user.email) return false;
+
+      // Upsert user: tạo mới nếu chưa có, update name/avatar nếu đã có
+      await prisma.user.upsert({
+        where: { email: user.email },
+        update: {
+          name: user.name || "User",
+          avatarUrl: user.image || null,
+          googleId: account.providerAccountId,
+        },
+        create: {
+          email: user.email,
+          name: user.name || "User",
+          avatarUrl: user.image || null,
+          googleId: account.providerAccountId,
+          role: "CANDIDATE",
+        },
+      });
+
+      return true;
+    },
+
+    async jwt({ token, user, account }) {
+      // Lần đầu đăng nhập: lấy user từ DB
+      if (account && user?.email) {
+        const dbUser = await prisma.user.findUnique({
+          where: { email: user.email },
+          select: { id: true, role: true, active: true, name: true },
+        });
+        if (dbUser) {
+          token.id = dbUser.id;
+          token.role = dbUser.role;
+          token.name = dbUser.name;
+          token.lastChecked = Date.now();
+        }
       }
 
-      // Sync role/active từ DB mỗi 5 phút
+      // Sync role/active từ DB mỗi 1 phút
       const now = Date.now();
       const lastChecked = (token.lastChecked as number) || 0;
-      if (now - lastChecked > 1 * 60 * 1000) {
+      if (token.id && now - lastChecked > 1 * 60 * 1000) {
         const dbUser = await prisma.user.findUnique({
           where: { id: token.id as string },
           select: { role: true, active: true, name: true },
         });
         if (!dbUser || !dbUser.active) {
-          // User bị vô hiệu hóa → invalidate token
           token.id = undefined;
           return token;
         }

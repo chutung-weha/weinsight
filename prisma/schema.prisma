@@ -55,9 +55,10 @@ model User {
   id             String   @id @default(cuid())
   email          String   @unique
   name           String
-  passwordHash   String
+  passwordHash   String?  // Optional — không cần cho Google OAuth
+  googleId       String?  @unique  // Google account ID
   role           Role     @default(CANDIDATE)
-  department     String?  // Phòng ban (dùng để filter trên admin dashboard)
+  department     String?
   avatarUrl      String?
   active         Boolean  @default(true)
 

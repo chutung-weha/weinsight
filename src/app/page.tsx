@@ -8,7 +8,7 @@ const features = [
   { title: "Tư duy Logic", desc: "Đo năng lực giải quyết vấn đề, tư duy phân tích và khả năng ra quyết định.", color: "violet", icon: "bolt" },
   { title: "Xử lý tình huống", desc: "Đánh giá cách ứng xử trong các tình huống thực tế tại doanh nghiệp.", color: "blue", icon: "chat" },
   { title: "Cấu hình AI Prompt", desc: "Chỉnh tone (thẳng/nhẹ/coach) và mục tiêu (tuyển dụng/đào tạo/đánh giá).", color: "teal", icon: "config" },
-  { title: "Admin Dashboard", desc: "Xem danh sách, điểm, rank nhân sự. Filter theo phòng ban và click xem chi tiết.", color: "cyan", icon: "chart" },
+  { title: "Admin Dashboard", desc: "Xem danh sách, điểm, rank nhân sự. Filter theo đơn vị và click xem chi tiết.", color: "cyan", icon: "chart" },
   { title: "Thần số học", desc: "Phân tích 6 chỉ số Pythagoras từ họ tên và ngày sinh — hiểu sâu bản chất con người.", color: "violet", icon: "doc" },
 ];
 
