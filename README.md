@@ -49,16 +49,55 @@ Mở [http://localhost:3000](http://localhost:3000).
 | `GOOGLE_CLIENT_SECRET` | Yes | Cùng nguồn với Client ID |
 | `GROQ_API_KEY` | No | [console.groq.com/keys](https://console.groq.com/keys) — không có thì dùng rule-based fallback |
 
+App sẽ **fail-fast** nếu thiếu env bắt buộc (`src/lib/env.ts` validate lúc startup).
+
 ## Scripts
 
 | Script | Mô tả |
 |--------|-------|
 | `npm run dev` | Chạy dev server |
 | `npm run build` | Build production |
-| `npm run lint` | ESLint (quality gate) |
+| `npm run lint` | ESLint quality gate (0 errors) |
 | `npm run db:migrate` | Chạy Prisma migrations |
-| `npm run db:seed` | Seed data (admin, demo user, câu hỏi mẫu) |
+| `npm run db:seed` | Seed data (admin, demo user, 45 câu hỏi mẫu) |
 | `npm run db:studio` | Mở Prisma Studio |
+
+## Tính năng
+
+### Bài test
+- **DISC**: 20 câu đánh giá tính cách (D/I/S/C dimensions)
+- **Logic**: 15 câu tư duy logic (rubric 0/1/3)
+- **Situation**: 10 câu xử lý tình huống (4 chiều: leadership/teamwork/communication/problemSolving)
+- **Thần số học**: 6 chỉ số Pythagoras từ họ tên + ngày sinh (chuẩn Pythagoras, hỗ trợ master numbers 11/22)
+
+### AI Insight
+- Groq API (LLaMA 3.1) phân tích kết quả test + thần số học
+- Rule-based fallback khi không có API key
+- Cấu hình tone (thẳng/nhẹ/coach) và mục tiêu (tuyển dụng/đào tạo/đánh giá)
+- Output: summary, personality profile, numerology insight, strengths, improvements, suitable roles, development plan
+- Duplicate prevention: không tạo insight mới nếu đã có
+- Input sanitization chống prompt injection
+
+### Auth & Security
+- Google OAuth (tài khoản tự tạo lần đầu đăng nhập)
+- JWT session + 1-phút role sync từ DB
+- Disabled user: token invalidate ngay (không chờ hết JWT 7 ngày)
+- Middleware route protection (test, result, admin)
+- Security headers: HSTS, CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy
+- CSRF Origin check trên POST API routes
+- Rate limiting: 5 req/user/phút cho AI insight
+- Input sanitization chống prompt injection
+- `callbackUrl` validation chặn open redirect
+- Env validation fail-fast
+
+### Admin
+- Dashboard với stats tổng quan (users, sessions, insights)
+- Server-side auth guard (ADMIN/HR only)
+- CRUD câu hỏi, quản lý users — đang phát triển
+
+### SEO
+- Sitemap XML (4 public routes)
+- Robots.txt (disallow admin/api/result)
 
 ## Cấu trúc thư mục
 
@@ -70,7 +109,9 @@ src/
 │   ├── api/              # Auth, test questions, result, insight APIs
 │   ├── test/             # Test selection + DISC/Logic/Situation pages
 │   ├── than-so-hoc/      # Thần số học Pythagoras
-│   └── result/[id]/      # Kết quả test + AI Insight
+│   ├── result/[id]/      # Kết quả test + AI Insight
+│   ├── sitemap.ts        # Sitemap generation
+│   └── robots.ts         # Robots.txt generation
 ├── components/
 │   ├── layout/           # Header, Footer, Logo
 │   ├── numerology/       # NumerologyPage (form + result)
@@ -83,41 +124,33 @@ src/
 │   ├── env.ts            # Runtime env validation
 │   ├── numerology.ts     # Pythagoras calculation engine
 │   ├── prisma.ts         # Prisma client singleton
-│   ├── rate-limit.ts     # In-memory rate limiter
+│   ├── rate-limit.ts     # In-memory rate limiter (LRU eviction)
 │   └── scoring.ts        # Score computation (dynamic maxScores)
 └── types/                # TypeScript types + NextAuth augmentation
 ```
 
-## Tính năng
+## Deploy
 
-### Bài test
-- **DISC**: 20 câu đánh giá tính cách (D/I/S/C dimensions)
-- **Logic**: 15 câu tư duy logic (rubric 0/1/3)
-- **Situation**: 10 câu xử lý tình huống (4 chiều: leadership/teamwork/communication/problemSolving)
-- **Thần số học**: 6 chỉ số Pythagoras từ họ tên + ngày sinh
+### Option 1: Vercel
+1. Import repo vào Vercel
+2. Thêm tất cả env vars (`NEXTAUTH_URL` = production domain)
+3. Vercel tự chạy `npm run build` (bao gồm `prisma generate`)
 
-### AI Insight
-- Groq API (LLaMA 3.1) phân tích kết quả test + thần số học
-- Rule-based fallback khi không có API key
-- Cấu hình tone (thẳng/nhẹ/coach) và mục tiêu (tuyển dụng/đào tạo/đánh giá)
-- Output: summary, strengths, improvements, suitable roles, development plan
+**Lưu ý**: Vercel Hobby timeout 10s — AI insight (30s) có thể fail. Cần Vercel Pro hoặc VPS.
 
-### Auth & Security
-- Google OAuth (tài khoản tự tạo lần đầu đăng nhập)
-- JWT session + 1-phút role sync từ DB
-- Middleware route protection (test, result, admin)
-- Security headers (HSTS, CSP, X-Frame-Options, etc.)
-- Rate limiting (5 req/user/phút cho AI insight)
-- Input sanitization chống prompt injection
+### Option 2: GCP VPS (khuyến nghị cho production)
+1. Tạo Compute Engine instance (e2-small, Ubuntu 22.04, asia-southeast1)
+2. Cài Docker + Nginx + Certbot
+3. Thêm `output: 'standalone'` vào `next.config.ts`
+4. Đổi Prisma `binaryTargets` sang `debian-openssl-3.0.x`
+5. Build Docker image + deploy
+6. Setup Nginx reverse proxy + SSL
 
-## Deploy (Vercel)
+Chi tiết tại `CLAUDE.md` → Bước tiếp theo #1.
 
-1. Push code lên GitHub
-2. Import repo vào Vercel
-3. Thêm tất cả env vars (đặc biệt `NEXTAUTH_URL` = production domain)
-4. Vercel tự chạy `npm run build` (bao gồm `prisma generate`)
-
-Database khuyến nghị: Supabase PostgreSQL (free tier) với PgBouncer.
+### Database
+- **Production**: Supabase PostgreSQL (free tier 500MB) với PgBouncer
+- **Alternative**: GCP Cloud SQL (cùng region → latency thấp hơn)
 
 ## License
 
