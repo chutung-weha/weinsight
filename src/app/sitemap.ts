@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 
-const BASE_URL = process.env.NEXTAUTH_URL || "https://weinsight.vercel.app";
+const BASE_URL = process.env.NEXTAUTH_URL || "https://insight.wehavn.vn";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   return [

@@ -21,7 +21,7 @@ if (process.env.NODE_ENV === "production" && nextAuthUrl.includes("localhost")) 
   const isBuildPhase = process.env.NEXT_PHASE === "phase-production-build";
   const msg =
     "NEXTAUTH_URL is set to localhost in production. " +
-    "Set NEXTAUTH_URL to your production domain (e.g., https://weinsight.vercel.app).";
+    "Set NEXTAUTH_URL to your production domain (e.g., https://insight.wehavn.vn).";
   if (isBuildPhase) {
     console.warn(`⚠️  ${msg}`);
   } else {

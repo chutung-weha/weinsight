@@ -40,6 +40,7 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   outputFileTracingIncludes: {
     "/**": ["./node_modules/.prisma/client/**/*"],
   },
