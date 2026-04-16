@@ -9,6 +9,57 @@ function getAnsweredQuestionIds(answers: Array<{ questionId: string }>): string[
   return [...new Set(answers.map((answer) => answer.questionId).filter(Boolean))];
 }
 
+function extractText(value: unknown): string | null {
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    return normalized || null;
+  }
+
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+
+  if (Array.isArray(value)) {
+    const flattened = value
+      .map((item) => extractText(item))
+      .filter((item): item is string => Boolean(item));
+    return flattened.length > 0 ? flattened.join(" ") : null;
+  }
+
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const preferredKeys = ["text", "content", "summary", "description", "value", "title", "label"];
+    for (const key of preferredKeys) {
+      const extracted = extractText(record[key]);
+      if (extracted) return extracted;
+    }
+
+    const flattened = Object.values(record)
+      .map((item) => extractText(item))
+      .filter((item): item is string => Boolean(item));
+    return flattened.length > 0 ? flattened.join(" ") : null;
+  }
+
+  return null;
+}
+
+function toStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .flatMap((item) => toStringArray(item))
+      .filter(Boolean);
+  }
+
+  if (value && typeof value === "object") {
+    return Object.values(value as Record<string, unknown>)
+      .flatMap((item) => toStringArray(item))
+      .filter(Boolean);
+  }
+
+  const text = extractText(value);
+  return text ? [text] : [];
+}
+
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ sessionId: string }> }
@@ -95,24 +146,18 @@ export async function GET(
             const ai = testSession.aiInsight;
             let extra: Record<string, unknown> = {};
             try { extra = JSON.parse(ai.fullResponse); } catch { /* ignore */ }
-            const toStringArray = (val: unknown): string[] => {
-              if (Array.isArray(val)) return val.map(String).filter(Boolean);
-              if (val && typeof val === "object") return Object.values(val).map(String).filter(Boolean);
-              return [];
-            };
             return {
-              summary: String(ai.summary || ""),
-              personalityProfile: typeof extra.personalityProfile === "string" ? extra.personalityProfile : null,
-              numerologyInsight: typeof extra.numerologyInsight === "string" ? extra.numerologyInsight : null,
+              summary: extractText(ai.summary) || "",
+              personalityProfile: extractText(extra.personalityProfile),
+              numerologyInsight: extractText(extra.numerologyInsight),
               strengths: toStringArray(ai.strengths),
               improvements: toStringArray(ai.improvements),
               suitableRoles: toStringArray(ai.suitableRoles),
-              developmentPlan: Array.isArray(extra.developmentPlan)
-                ? (extra.developmentPlan as string[]).map(String).filter(Boolean)
-                : extra.developmentPlan && typeof extra.developmentPlan === "object"
-                  ? Object.values(extra.developmentPlan as Record<string, unknown>).map(String).filter(Boolean)
-                  : null,
-              recommendation: String(ai.recommendation || ""),
+              developmentPlan: (() => {
+                const flattened = toStringArray(extra.developmentPlan);
+                return flattened.length > 0 ? flattened : null;
+              })(),
+              recommendation: extractText(ai.recommendation) || "",
             };
           })()
         : null,

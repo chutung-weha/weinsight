@@ -71,6 +71,10 @@ export async function startTest(data: StartTestInput) {
   if (existing) {
     const activeQuestionIdSet = new Set(activeQuestions.map((q) => q.id));
     const selectedIds = parseSelectedQuestionIds(existing.selectedQuestionIds);
+    const isLegacyDiscSession =
+      testType === "DISC" &&
+      activeQuestions.length > DISC_QUESTIONS_PER_SESSION &&
+      (!selectedIds || selectedIds.length !== DISC_QUESTIONS_PER_SESSION);
 
     const hasStaleAnswers = existing.answers.some(
       (answer) => !activeQuestionIdSet.has(answer.questionId)
@@ -83,7 +87,7 @@ export async function startTest(data: StartTestInput) {
       existing.answers.length === 0 &&
       hasStaleSelectedIds;
 
-    if (hasStaleAnswers || shouldAbandonForStaleSelection) {
+    if (hasStaleAnswers || shouldAbandonForStaleSelection || isLegacyDiscSession) {
       await prisma.testSession.update({
         where: { id: existing.id },
         data: { status: "ABANDONED" },
