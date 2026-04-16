@@ -3,9 +3,19 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        - DATABASE_URL
+        - DIRECT_URL
+        - NEXTAUTH_SECRET
+        - NEXTAUTH_URL
+        - GROQ_API_KEY
+        - GOOGLE_CLIENT_ID
+        - GOOGLE_CLIENT_SECRET
     ports:
       - "127.0.0.1:3000:3000"
     env_file: .env
+    environment:
+      - GOOGLE_CLIENT_SECRET
     restart: unless-stopped
     deploy:
       resources:
