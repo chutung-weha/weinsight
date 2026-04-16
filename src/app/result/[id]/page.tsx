@@ -16,6 +16,8 @@ interface ResultData {
   occupation: string | null;
   maxScores: Record<string, number>;
   questionCount: number;
+  canGenerateAiInsight: boolean;
+  aiInsightReason: string | null;
   completedAt: string | null;
   answers: { question: string; answer: string; order: number }[];
   aiInsight: {
@@ -103,7 +105,7 @@ export default function ResultPage() {
         } else {
           setData(json.data);
           // Nếu chưa có AI Insight → tự động gọi generate
-          if (!json.data.aiInsight && json.data.status === "COMPLETED") {
+          if (json.data.canGenerateAiInsight && !json.data.aiInsight && json.data.status === "COMPLETED") {
             if (!cancelled) setInsightLoading(true);
             try {
               const genRes = await fetch(`/api/insight/${sessionId}`, { method: "POST" });
@@ -188,14 +190,43 @@ export default function ResultPage() {
   const avgPct = dimensions.length > 0 ? dimensions.reduce((a, b) => a + b, 0) / dimensions.length : 0;
   const maxPct = Math.max(...dimensions, 0);
 
-  // Overall formula per test type:
-  // - DISC (proportion): max dimension % — reward profile rõ ràng, không dùng blend vì proportion sum ≈ 100%
-  // - Logic/Situation (absolute): 60% max + 40% avg — reward cả chuyên sâu lẫn cân bằng
-  const overall = isDISC
-    ? maxPct
-    : Math.round(maxPct * 0.6 + avgPct * 0.4);
-  const dashOffset = 314 - (314 * overall) / 100;
-  const overallLabel = isDISC ? "Tổng Quan" : "Điểm Tổng";
+  // DISC: hiển thị thiên hướng profile, không chấm điểm
+  // Logic/Situation: 60% max + 40% avg
+  const overall = isDISC ? 0 : Math.round(maxPct * 0.6 + avgPct * 0.4);
+  const dashOffset = isDISC ? 0 : 314 - (314 * overall) / 100;
+
+  // DISC dominant profile: lấy top 1-2 dimensions (>= 25% hoặc cách top <=5%)
+  const discProfile = (() => {
+    if (!isDISC) return { letters: "", label: "" };
+    const sorted = Object.entries(pct).sort(([, a], [, b]) => b - a);
+    const top = sorted[0];
+    const second = sorted[1];
+    // Lấy dimension thứ 2 nếu gần sát top (cách <= 5%)
+    const letters = second && top[1] - second[1] <= 5
+      ? `${top[0]}${second[0]}`
+      : top[0];
+
+    const profileNames: Record<string, string> = {
+      D: "Dẫn dắt",
+      I: "Truyền cảm hứng",
+      S: "Ổn định",
+      C: "Hệ thống",
+      DC: "Dẫn dắt — Hệ thống",
+      CD: "Hệ thống — Dẫn dắt",
+      DI: "Dẫn dắt — Cảm hứng",
+      ID: "Cảm hứng — Dẫn dắt",
+      DS: "Dẫn dắt — Ổn định",
+      SD: "Ổn định — Dẫn dắt",
+      IS: "Cảm hứng — Ổn định",
+      SI: "Ổn định — Cảm hứng",
+      IC: "Cảm hứng — Hệ thống",
+      CI: "Hệ thống — Cảm hứng",
+      SC: "Ổn định — Hệ thống",
+      CS: "Hệ thống — Ổn định",
+    };
+    return { letters, label: profileNames[letters] || letters };
+  })();
+
   const insight = data.aiInsight;
 
   return (
@@ -227,14 +258,56 @@ export default function ResultPage() {
           {/* Score Ring + Bars */}
           <div className="glass p-8 text-center">
             <div className="flex justify-center mb-6">
-              <svg width={140} height={140} viewBox="0 0 120 120">
-                <circle cx={60} cy={60} r={50} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={8} />
-                <circle cx={60} cy={60} r={50} fill="none" stroke="url(#rg)" strokeWidth={8} strokeLinecap="round" strokeDasharray={314} strokeDashoffset={dashOffset} transform="rotate(-90 60 60)" />
-                <defs><linearGradient id="rg" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stopColor={theme.ringGradient[0]} /><stop offset="100%" stopColor={theme.ringGradient[1]} /></linearGradient></defs>
-                <text x={60} y={55} textAnchor="middle" fontSize={30} fontWeight={800} fill="#F1F5F9">{overall}</text>
-                <text x={60} y={72} textAnchor="middle" fontSize={10} fill="#94A3B8">{overallLabel}</text>
-              </svg>
+              {isDISC ? (
+                /* DISC: hiển thị thiên hướng profile thay vì chấm điểm */
+                <div className="relative w-[140px] h-[140px] flex items-center justify-center">
+                  <svg width={140} height={140} viewBox="0 0 120 120" className="absolute inset-0">
+                    <circle cx={60} cy={60} r={50} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={8} />
+                    {/* 4 arcs cho 4 DISC dimensions — mỗi arc tỷ lệ với % */}
+                    {(() => {
+                      const order = ["D", "I", "S", "C"];
+                      const colors = ["#06B6D4", "#8B5CF6", "#3B82F6", "#14B8A6"];
+                      let offset = 0;
+                      return order.map((key, i) => {
+                        const val = pct[key] || 0;
+                        const arcLen = (val / 100) * 314;
+                        const el = (
+                          <circle
+                            key={key}
+                            cx={60} cy={60} r={50}
+                            fill="none"
+                            stroke={colors[i]}
+                            strokeWidth={8}
+                            strokeLinecap="round"
+                            strokeDasharray={`${arcLen} ${314 - arcLen}`}
+                            strokeDashoffset={-offset}
+                            transform="rotate(-90 60 60)"
+                            opacity={0.85}
+                          />
+                        );
+                        offset += arcLen;
+                        return el;
+                      });
+                    })()}
+                  </svg>
+                  <div className="relative z-10 text-center">
+                    <div className="text-2xl font-extrabold text-slate-100 tracking-wider">{discProfile.letters}</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">Thiên hướng</div>
+                  </div>
+                </div>
+              ) : (
+                <svg width={140} height={140} viewBox="0 0 120 120">
+                  <circle cx={60} cy={60} r={50} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={8} />
+                  <circle cx={60} cy={60} r={50} fill="none" stroke="url(#rg)" strokeWidth={8} strokeLinecap="round" strokeDasharray={314} strokeDashoffset={dashOffset} transform="rotate(-90 60 60)" />
+                  <defs><linearGradient id="rg" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stopColor={theme.ringGradient[0]} /><stop offset="100%" stopColor={theme.ringGradient[1]} /></linearGradient></defs>
+                  <text x={60} y={55} textAnchor="middle" fontSize={30} fontWeight={800} fill="#F1F5F9">{overall}</text>
+                  <text x={60} y={72} textAnchor="middle" fontSize={10} fill="#94A3B8">Điểm Tổng</text>
+                </svg>
+              )}
             </div>
+            {isDISC && discProfile.label && (
+              <div className="text-xs text-slate-400 mb-4 -mt-2">{discProfile.label}</div>
+            )}
             <div className="space-y-3.5">
               {Object.entries(pct).map(([key, value]) => (
                 <div key={key}>
@@ -347,13 +420,15 @@ export default function ResultPage() {
                 {insightLoading ? (
                   <>
                     <div className="w-10 h-10 rounded-full border-2 border-cyan-500 border-t-transparent animate-spin mx-auto mb-3" />
-                    <p>AI đang phân tích kết quả DISC + Thần số học...</p>
+                    <p>AI đang tổng hợp DISC + thần số học + nghề nghiệp...</p>
                     <p className="text-xs mt-1">Có thể mất 10-20 giây</p>
                   </>
                 ) : (
                   <>
-                    <p>Chưa có AI Insight cho phiên test này.</p>
-                    <p className="text-xs mt-2">Vui lòng cấu hình GROQ_API_KEY để sử dụng AI.</p>
+                    <p>{data.aiInsightReason || "Chưa có AI Insight cho phiên test này."}</p>
+                    {data.canGenerateAiInsight && (
+                      <p className="text-xs mt-2">Vui lòng cấu hình GROQ_API_KEY để dùng AI, nếu không hệ thống sẽ dùng bản phân tích rule-based.</p>
+                    )}
                   </>
                 )}
               </div>

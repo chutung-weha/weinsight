@@ -1,14 +1,9 @@
-/**
- * Runtime validation cho environment variables bắt buộc.
- * Import file này ở đầu auth.ts hoặc layout.tsx để fail-fast khi thiếu config.
- */
-
 function requireEnv(name: string): string {
   const value = process.env[name];
   if (!value) {
     throw new Error(
       `Missing required environment variable: ${name}. ` +
-      `Check your .env file or hosting platform's environment settings.`
+      "Check your .env/.env.local or hosting platform settings."
     );
   }
   return value;
