@@ -32,6 +32,7 @@ export async function GET(
   const sessionId = url.searchParams.get("sessionId");
 
   let questionIds: string[] | null = null;
+  let hasValidSessionContext = false;
   if (sessionId) {
     const testSession = await prisma.testSession.findUnique({
       where: { id: sessionId },
@@ -47,11 +48,19 @@ export async function GET(
       testSession.userId === session.user.id &&
       testSession.testType === type
     ) {
+      hasValidSessionContext = true;
       const stored = testSession.selectedQuestionIds as string[] | null;
       if (stored && stored.length > 0) {
         questionIds = stored;
       }
     }
+  }
+
+  if (type === "DISC" && !hasValidSessionContext) {
+    return NextResponse.json(
+      { success: false, error: "Bài DISC phải được tải qua phiên test hợp lệ" },
+      { status: 400 }
+    );
   }
 
   let questions;

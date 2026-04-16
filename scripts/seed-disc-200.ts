@@ -17,6 +17,10 @@ const SB = { D: 0, I: 1, S: 0, C: 0 };
 const SC = { D: 0, I: 0, S: 1, C: 0 };
 const SD = { D: 0, I: 0, S: 0, C: 1 };
 
+function lowerFirst(input: string): string {
+  return input ? input.charAt(0).toLowerCase() + input.slice(1) : input;
+}
+
 const discQuestions = [
   // ─── 20 CÂU PHONG CÁCH (câu 1–20) ───────────────────────────────────────
   {
@@ -413,11 +417,43 @@ const discQuestions = [
     ],
   },
   // Câu 40–200: lặp lại chu kỳ 19 tình huống (câu 21–39)
-  // để đảm bảo mỗi lần bốc 20 câu ngẫu nhiên, mỗi tình huống DISC đều có đại diện
+  // nhưng thêm ngữ cảnh riêng để tránh trùng nội dung khi random hiển thị cho user
   ...Array.from({ length: 161 }, (_, i) => {
-    const baseOrder = (i % 19) + 21; // lặp từ 21–39
-    const cycleNum = Math.floor(i / 19) + 2; // chu kỳ 2, 3, 4...
     const baseIdx = i % 19;
+    const contextLeads = [
+      "Trong giai đoạn thử việc",
+      "Khi đội nhóm đang tăng tốc doanh số",
+      "Trong tuần cao điểm vận hành",
+      "Lúc dự án cần phối hợp liên phòng ban",
+      "Khi công ty mở rộng quy mô",
+      "Trong bối cảnh khách hàng thay đổi kỳ vọng liên tục",
+      "Khi bạn phải cân bằng giữa tốc độ và chất lượng",
+    ];
+    const contextFocuses = [
+      "với khối lượng việc tăng mạnh",
+      "khi nguồn lực khá hạn chế",
+      "trong môi trường áp lực cao",
+      "khi phải phối hợp với người mới",
+      "lúc deadline đang đến gần",
+      "khi quy trình chưa thật ổn định",
+      "khi có nhiều ý kiến trái chiều",
+      "lúc cần bảo toàn trải nghiệm khách hàng",
+      "khi tiêu chuẩn đánh giá rất rõ ràng",
+      "lúc dữ liệu chưa đầy đủ ngay từ đầu",
+      "khi sếp yêu cầu báo cáo tiến độ liên tục",
+      "trong ca làm việc kéo dài",
+      "khi ưu tiên công việc thay đổi liên tục",
+      "lúc phải xử lý nhiều đầu việc song song",
+      "khi nhóm đang thiếu một mắt xích quan trọng",
+      "trong thời điểm cần giữ tinh thần đội ngũ",
+      "khi phải bảo vệ quan điểm chuyên môn",
+      "lúc chuẩn bị cho một quyết định lớn",
+      "trong bối cảnh cần phản hồi thật nhanh",
+      "khi tính nhất quán được đặt lên hàng đầu",
+      "lúc phải vừa học vừa làm",
+      "khi có rủi ro phát sinh ngoài dự kiến",
+      "trong tình huống cần tạo niềm tin ngay lập tức",
+    ];
     const bases = [
       {
         content: "Khi khách hàng khó tính phàn nàn, bạn:",
@@ -555,9 +591,10 @@ const discQuestions = [
     ];
 
     const base = bases[baseIdx];
+    const context = `${contextLeads[Math.floor(i / contextFocuses.length)]} ${contextFocuses[i % contextFocuses.length]}`;
     return {
       order: 40 + i,
-      content: base.content,
+      content: `${context}, ${lowerFirst(base.content)}`,
       answers: [
         { order: 1, text: base.a, scores: SA },
         { order: 2, text: base.b, scores: SB },
@@ -567,6 +604,11 @@ const discQuestions = [
     };
   }),
 ];
+
+const uniqueContents = new Set(discQuestions.map((question) => question.content));
+if (uniqueContents.size !== discQuestions.length) {
+  throw new Error(`DISC seed data contains duplicate question content: ${discQuestions.length - uniqueContents.size} duplicates found`);
+}
 
 async function main() {
   console.log("🌱 Seeding 200 DISC questions...");

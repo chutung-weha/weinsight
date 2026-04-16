@@ -185,6 +185,10 @@ function normalizeInsightResult(input: Partial<InsightResult>): InsightResult {
   };
 }
 
+function getSessionQuestionIds(answers: Array<{ questionId: string }>): string[] {
+  return [...new Set(answers.map((answer) => answer.questionId).filter(Boolean))];
+}
+
 function buildFallbackInsight(input: {
   scores: DISCScores;
   candidateName: string;
@@ -288,7 +292,9 @@ export async function generateInsight({ sessionId }: GenerateInsightInput): Prom
   );
   const lifePathData = LIFE_PATH[numerology.lifePath];
   const disc = analyzeDisc(scores);
-  const { maxScores } = await computeScoreMeta(session.testType);
+  const { maxScores } = await computeScoreMeta(session.testType, {
+    questionIds: getSessionQuestionIds(session.answers),
+  });
 
   if (!process.env.GROQ_API_KEY) {
     return { insight: buildFallbackInsight({ scores, candidateName, occupation, numerology }), config };

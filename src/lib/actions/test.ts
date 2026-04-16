@@ -16,6 +16,12 @@ import { generateAndSaveInsight, getInsightEligibility } from "@/lib/ai/generate
 // Số câu hỏi cần chọn cho mỗi session DISC
 const DISC_QUESTIONS_PER_SESSION = 20;
 
+function parseSelectedQuestionIds(value: unknown): string[] | null {
+  if (!Array.isArray(value)) return null;
+  const ids = value.filter((item): item is string => typeof item === "string" && item.length > 0);
+  return ids.length > 0 ? ids : null;
+}
+
 /**
  * Chọn ngẫu nhiên N phần tử từ mảng (Fisher-Yates shuffle)
  */
@@ -64,12 +70,20 @@ export async function startTest(data: StartTestInput) {
 
   if (existing) {
     const activeQuestionIdSet = new Set(activeQuestions.map((q) => q.id));
+    const selectedIds = parseSelectedQuestionIds(existing.selectedQuestionIds);
 
     const hasStaleAnswers = existing.answers.some(
       (answer) => !activeQuestionIdSet.has(answer.questionId)
     );
+    const hasStaleSelectedIds =
+      !!selectedIds &&
+      selectedIds.some((questionId) => !activeQuestionIdSet.has(questionId));
+    const shouldAbandonForStaleSelection =
+      !!selectedIds &&
+      existing.answers.length === 0 &&
+      hasStaleSelectedIds;
 
-    if (hasStaleAnswers) {
+    if (hasStaleAnswers || shouldAbandonForStaleSelection) {
       await prisma.testSession.update({
         where: { id: existing.id },
         data: { status: "ABANDONED" },
@@ -86,7 +100,6 @@ export async function startTest(data: StartTestInput) {
           },
         });
       }
-      const selectedIds = (existing.selectedQuestionIds as string[] | null) ?? null;
       return {
         success: true as const,
         sessionId: existing.id,
@@ -267,6 +280,17 @@ export async function completeTest(data: CompleteTestInput) {
   }
 
   const totalQuestions = requiredQuestionIds.size;
+  if (totalQuestions === 0) {
+    await prisma.testSession.update({
+      where: { id: sessionId },
+      data: { status: "ABANDONED" },
+    });
+    return {
+      success: false as const,
+      error: "Phiên test không còn câu hỏi hợp lệ. Vui lòng bắt đầu lại.",
+    };
+  }
+
   // Đếm số câu đã trả lời trong danh sách yêu cầu
   const answeredRequired = session.answers.filter((a) =>
     requiredQuestionIds.has(a.questionId)

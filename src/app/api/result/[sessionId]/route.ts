@@ -5,6 +5,10 @@ import { prisma } from "@/lib/prisma";
 import { computeScoreMeta } from "@/lib/scoring";
 import { getInsightEligibility } from "@/lib/ai/generate-insight";
 
+function getAnsweredQuestionIds(answers: Array<{ questionId: string }>): string[] {
+  return [...new Set(answers.map((answer) => answer.questionId).filter(Boolean))];
+}
+
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ sessionId: string }> }
@@ -59,9 +63,12 @@ export async function GET(
 
   // Numerology không có questions — skip score meta computation
   const isNumerology = testSession.testType === "NUMEROLOGY";
+  const answeredQuestionIds = getAnsweredQuestionIds(testSession.answers);
   const { maxScores, questionCount } = isNumerology
     ? { maxScores: {}, questionCount: 0 }
-    : await computeScoreMeta(testSession.testType);
+    : await computeScoreMeta(testSession.testType, {
+        questionIds: answeredQuestionIds.length > 0 ? answeredQuestionIds : undefined,
+      });
 
   return NextResponse.json({
     success: true,
