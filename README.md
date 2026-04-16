@@ -49,7 +49,16 @@ Mở [http://localhost:3000](http://localhost:3000).
 | `GOOGLE_CLIENT_SECRET` | Yes | Cùng nguồn với Client ID |
 | `GROQ_API_KEY` | No | [console.groq.com/keys](https://console.groq.com/keys) — không có thì dùng rule-based fallback |
 
-App sẽ **fail-fast** nếu thiếu env bắt buộc (`src/lib/env.ts` validate lúc startup).
+### Supabase Connection Notes
+
+- `DATABASE_URL` phải dùng endpoint pooler của Supabase, ví dụ `aws-1-ap-southeast-1.pooler.supabase.com:6543`.
+- `DIRECT_URL` phải dùng endpoint database trực tiếp, ví dụ `db.<project-ref>.supabase.co:5432`.
+- Với Supabase, user của `DATABASE_URL` thường là `postgres.<project-ref>`, còn `DIRECT_URL` thường là `postgres`.
+- Nếu password chứa ký tự như `@`, `:`, `/`, `?`, `#`, phải URL-encode trước khi đưa vào connection string.
+  Ví dụ: `Weinsight@123` -> `Weinsight%40123`.
+- Thêm `sslmode=require` cho cả hai URL.
+
+App không còn fail build chỉ vì thiếu Google OAuth env, nhưng các route auth vẫn cần đủ biến môi trường để đăng nhập hoạt động đúng.
 
 ## Scripts
 
@@ -58,6 +67,7 @@ App sẽ **fail-fast** nếu thiếu env bắt buộc (`src/lib/env.ts` validate
 | `npm run dev` | Chạy dev server |
 | `npm run build` | Build production |
 | `npm run lint` | ESLint quality gate (0 errors) |
+| `npm run db:check` | Kiểm tra app runtime có kết nối DB được không |
 | `npm run db:migrate` | Chạy Prisma migrations |
 | `npm run db:seed` | Seed data (admin, demo user, 45 câu hỏi mẫu) |
 | `npm run db:studio` | Mở Prisma Studio |
@@ -151,6 +161,14 @@ Chi tiết tại `CLAUDE.md` → Bước tiếp theo #1.
 ### Database
 - **Production**: Supabase PostgreSQL (free tier 500MB) với PgBouncer
 - **Alternative**: GCP Cloud SQL (cùng region → latency thấp hơn)
+
+### Kiểm tra kết nối DB
+
+```bash
+npm run db:check
+```
+
+Script này dùng đúng Prisma Client của app để chạy `select current_database(), current_user`, nên phù hợp để kiểm tra nhanh xem `.env`/`.env.local` hiện tại có kết nối DB được không.
 
 ## License
 

@@ -16,7 +16,7 @@ export async function saveNumerologyResult(data: NumerologyFormInput) {
 
   // Tính toán server-side (defense in depth)
   const result = calculateAll(fullName, day, month, year);
-  const dob = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  const dob = new Date(Date.UTC(year, month - 1, day));
 
   // Check duplicate: cùng user + tên + ngày sinh trong 1 phút → trả session cũ
   const recent = await prisma.testSession.findFirst({

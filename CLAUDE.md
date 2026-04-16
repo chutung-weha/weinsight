@@ -14,200 +14,158 @@ Nền tảng đánh giá nhân sự của WEHA Group. User làm test (DISC, Logi
 
 ## Đã hoàn thành
 
-### 1. Database & Schema (Prisma + PostgreSQL)
-- **Status**: ✅ Hoàn thành
-- 8 models: User, Question, Answer, TestSession, TestAnswer, AIInsight, KnowledgeDoc, AIConfig
-- 7 enums: Role, TestType (DISC/LOGIC/SITUATION/NUMEROLOGY), SessionStatus (IN_PROGRESS/COMPLETED/ABANDONED), DocStatus, AITone, AIObjective
-- Seed data: admin user, demo user, 20 câu DISC, 15 câu Logic, 10 câu Situation, AI config mặc định
-- Prisma client output: `src/generated/prisma` (gitignored, generate khi cài)
-- Indexes: `(testType, active)`, `(userId, testType)`, `(status)`, `(sessionId)`, `(uploadedById)`
+### 1. Database & Schema
+- **Status**: ✅ Hoàn thành và đã đồng bộ với database thật
+- Prisma schema hiện có 8 models: `User`, `Question`, `Answer`, `TestSession`, `TestAnswer`, `AIInsight`, `KnowledgeDoc`, `AIConfig`
+- `TestType` gồm `DISC`, `LOGIC`, `SITUATION`, `NUMEROLOGY`
+- `AIInsight` đã được chuyển sang quan hệ **1 session = 1 insight** (`sessionId @unique`)
+- Migration `20260416100310_make_ai_insight_singleton_per_session` đã được apply vào DB thật và đã có record trong `_prisma_migrations`
+- `npx prisma generate` hoạt động bình thường với schema hiện tại
 
-### 2. Authentication (NextAuth v4 + Google OAuth)
-- **Status**: ✅ Hoàn thành + Hardened
-- Google OAuth provider (tài khoản tự tạo lần đầu đăng nhập via upsert)
-- JWT session strategy, 7-day max age
-- Role sync từ DB mỗi **1 phút** (phát hiện user bị deactivate)
-- **Disabled user handling**: JWT callback xóa sạch token data + set `disabled` flag → middleware reject ngay
-- Middleware route protection: check `token.id` + `token.disabled` (không chỉ token exists)
-- Auth routes (`/dang-nhap`), protected routes, admin routes (`/admin/*`)
-- `callbackUrl` sanitization — chỉ chấp nhận relative path, chặn open redirect
-- Role type: union `"ADMIN" | "HR" | "CANDIDATE"` (không dùng string)
-- Runtime env validation (`src/lib/env.ts`) — fail-fast khi thiếu env vars bắt buộc
+### 2. Authentication (NextAuth + Google OAuth)
+- **Status**: ✅ Hoàn thành, build-safe
+- Google OAuth only, auto-create user lần đầu
+- JWT session, sync role/active mỗi 1 phút
+- Disabled user bị vô hiệu hóa ngay qua `token.disabled`
+- `callbackUrl` đã được sanitize để chặn open redirect
+- Build không còn fail chỉ vì thiếu Google OAuth env; auth provider chỉ bật khi đủ `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET`
 
-### 3. Test Flow (DISC + Logic + Situation)
+### 3. Test Flow (DISC / Logic / Situation)
 - **Status**: ✅ Hoàn thành
-- **Shared TestRunner component** — 3 test pages chỉ ~20 dòng mỗi file
-- Questions API: `GET /api/test/[testType]/questions` — validate testType, không leak scores
-- Server Actions: `startTest()`, `submitAnswer()`, `completeTest()`
-- Resume support: quay lại session IN_PROGRESS, biết câu nào đã trả lời
-- **Stale session detection**: nếu question bank thay đổi (question bị inactive) trong lúc user đang làm → auto abandon session cũ, tạo mới
-- **Atomic `updateMany`** trong completeTest — chống race condition double-submit
-- Score aggregation từ JSON answer scores, `computeScoreMeta()` dynamic từ DB
-- Seed data: 20 DISC + 15 Logic (reasoning rubric 0/1/3) + 10 Situation (4 chiều năng lực)
-- UX fixes: progress bar bắt đầu từ 1/N (không 0%), error clear trước retry, functional updater chống stale closure
+- Shared `TestRunner` cho 3 loại test
+- Resume session `IN_PROGRESS`
+- Phát hiện stale session khi question bank thay đổi
+- `completeTest()` dùng atomic update để chống double-submit
+- `computeScoreMeta()` lấy max score động từ DB
 
 ### 4. Thần số học Pythagoras
 - **Status**: ✅ Hoàn thành
-- Route: `/than-so-hoc` (protected, cần đăng nhập)
-- Input: Họ tên khai sinh + ngày/tháng/năm sinh (3 selects)
-- 6 chỉ số: Số chủ đạo, Thái độ, Năng lực tự nhiên, Sứ mệnh, Linh hồn, Nhân cách
-- **Thuật toán chuẩn Pythagoras**: cộng tất cả chữ cái trước rồi reduce 1 lần (không reduce từng từ)
-- **Master numbers 11, 22 giữ nguyên ở bước trung gian** Life Path (day/month/year reduce riêng với keepMaster=true)
-- Strip dấu tiếng Việt (Đ→D + NFD normalize) trước khi quy đổi
-- Validate ngày thực tế (chặn 31/02), chống double-click save
-- **Dedup session**: match theo `candidateName` + `dateOfBirth` + 1 phút window (không chỉ tên)
-- Server action lưu `candidateName` + `dateOfBirth` vào TestSession
-- Score ring fill theo `value/22` (scale đến master number max, không cap ở 9)
-- Descriptions Vietnamese cho 11 số (1-9, 11, 22) x 6 chỉ số
+- Route riêng `/than-so-hoc`
+- 6 chỉ số numerology hoạt động đúng
+- Save numerology result đã chuẩn hóa `dateOfBirth` theo `Date` thay vì string thô
+- Có dedup tránh tạo session numerology trùng trong thời gian ngắn
 
 ### 5. AI Insight
-- **Status**: ✅ Hoàn thành (cần GROQ_API_KEY để dùng real AI)
-- **Groq API** (LLaMA 3.1) với structured prompt — bao gồm maxScores context (score/max %)
-- Rule-based fallback cho DISC, Logic, Situation (dynamic từ DB, không hardcode)
-- **30s timeout** trên Groq API call (AbortController)
-- **Rate limit** 5 requests/user/phút trên POST `/api/insight/[sessionId]`
-- **Duplicate prevention**: check existing insight trước khi generate mới
-- **CSRF protection**: Origin header check trên POST route
-- **Input sanitization**: `sanitizeForPrompt()` cho candidateName, occupation, customPrompt, Q&A content — chống prompt injection
-- `response.json()` wrapped trong try/catch — graceful fallback khi Groq trả non-JSON
-- `candidateName` null safety: fallback "Ứng viên"
-- API routes: `GET/POST /api/insight/[sessionId]`
-- GET response không trả `fullResponse` (raw LLM output) — chỉ structured fields
+- **Status**: ✅ Hoàn thành theo scope mới
+- AI insight hiện **chỉ generate cho session DISC** khi đủ:
+  - `candidateName`
+  - `dateOfBirth`
+  - `occupation`
+- Logic mới của insight là **đánh giá tổng thể dựa trên DISC + thần số học + nghề nghiệp**
+- Có `getInsightEligibility()` để kiểm tra điều kiện generate thống nhất giữa API, result page và server actions
+- Có fallback rule-based nếu không có `GROQ_API_KEY`
+- POST `/api/insight/[sessionId]` đã:
+  - siết CSRF origin check đúng origin
+  - rate limit
+  - dùng `upsert`/singleton logic để tránh duplicate
 
-### 6. Landing Page
+### 6. Result Page
 - **Status**: ✅ Hoàn thành
-- 6 sections: Hero, Features (6 cards), How it Works (3 steps), AI Insight Preview, Who is it for, CTA
-- Liquid Glass design system trong `globals.css`
-- Scroll animations: IntersectionObserver + `.reveal` / `.reveal-left` / `.reveal-right`
-- Stagger delays: `.d1` tới `.d6` (0.1s–0.6s)
-- `prefers-reduced-motion` support
-- `@media (scripting: none)` fallback — hiện nội dung nếu JS không load
-- Fonts: Inter (body) + Be Vietnam Pro (logo, chỉ load weight 900)
+- `GET /api/result/[sessionId]` trả thêm:
+  - `canGenerateAiInsight`
+  - `aiInsightReason`
+- Client chỉ auto-generate insight khi session đủ điều kiện
+- UI thông báo rõ vì sao chưa generate insight thay vì retry mù
 
-### 7. Result Page
-- **Status**: ✅ Hoàn thành
-- API: `GET /api/result/[sessionId]` — trả `totalScores` + `maxScores` + `questionCount`
-- Dynamic theme per test type (DISC cyan, Logic violet, Situation blue)
-- DISC: proportion (tỷ trọng), overall = maxPct, label "profile"
-- Logic/Situation: absolute scores (score/maxPossible), overall = 60% max + 40% avg
-- NUMEROLOGY: skip computeScoreMeta (không có questions)
-- Permission check: owner hoặc HR/ADMIN mới xem được
-- Loading text: "Đang tải kết quả..." (không "AI đang phân tích" khi chưa gọi AI)
+### 7. Build / Runtime / Tooling
+- **Status**: ✅ Ổn định
+- Đã bỏ phụ thuộc `next/font/google`, nên `npm run build` không còn phụ thuộc mạng Google Fonts
+- `npm run lint` pass
+- `npm run build` pass
+- Đã thêm `npm run db:check` để kiểm tra kết nối DB bằng đúng Prisma Client của app
+- `README.md`, `.env.example`, `prisma.config.ts` đã cập nhật theo cấu hình Supabase thực tế
 
-### 8. Security Hardening
-- **Status**: ✅ Hoàn thành
-- **Security headers** (next.config.ts): HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, Content-Security-Policy
-- **CSP policy**: whitelist Google OAuth, Google Fonts, Google user avatars
-- **CSRF Origin check** trên POST `/api/insight`
-- In-memory sliding window rate limiter với LRU eviction (MAX_KEYS=10k), không dùng setInterval (serverless-compatible)
-- **Prompt injection defense**: `sanitizeForPrompt()` trên tất cả user input đưa vào LLM
-- Atomic updateMany chống double-submit trong completeTest
-- 30s timeout cho Groq API call
-- Token sync gap: 1 phút + disabled flag xóa sạch token
-- **callbackUrl validation**: chỉ chấp nhận relative paths
-- **Env validation** (`src/lib/env.ts`): fail-fast khi thiếu DATABASE_URL, NEXTAUTH_SECRET, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET. Warn khi NEXTAUTH_URL=localhost trong production
-- `dateOfBirth` validation: regex `YYYY-MM-DD` + max length cho candidateName/occupation
-- `next-auth@4.24.13` — fix CVE email misdelivery
-
-### 9. Error Handling & Loading States
-- **Status**: ✅ Hoàn thành
-- Error boundaries: `src/app/error.tsx`, `src/app/test/error.tsx`, `src/app/result/error.tsx`
-- Loading skeletons: `src/app/test/loading.tsx`, `src/app/result/loading.tsx`
-- TestRunner: `loading` init `true` (không flash "Không có câu hỏi" trước khi fetch xong)
-- `prefers-reduced-motion` CSS media query
-- `aria-label` cho Logo SVG
-
-### 10. Admin Dashboard (Placeholder)
-- **Status**: ⚠️ Placeholder — cần phát triển thêm
-- Layout với server-side auth guard (ADMIN/HR only)
-- Dashboard page: stats tổng quan (users, sessions, insights)
-- Chưa có: CRUD câu hỏi, quản lý users, AI config, knowledge upload
-
-### 11. SEO & Meta
-- **Status**: ✅ Cơ bản hoàn thành
-- `sitemap.ts`: 4 public routes (/, /dang-nhap, /test, /than-so-hoc)
-- `robots.ts`: disallow /admin, /api, /result, /ho-so, /history
-- Root metadata: title + description tiếng Việt
-- Chưa có: OpenGraph images, Twitter cards, metadataBase, structured data (JSON-LD)
-
-### 12. Code Quality & Tooling
-- **Status**: ✅ Hoàn thành
-- ESLint config: ignores `.next/`, `node_modules/`, `prisma/`, `next-env.d.ts` → **0 errors** (dùng được như quality gate)
-- TypeScript strict mode
-- `npm run lint` clean
-- README.md mô tả đầy đủ dự án
-- `.env.example` với hướng dẫn
-- Footer: không còn dead links `href="#"`, external links có `target="_blank" rel="noopener"`
+### 8. Supabase / Prisma Connection
+- **Status**: ✅ Đã xử lý
+- Password có ký tự `@` đã được URL-encode trong `.env.local`
+- `DATABASE_URL` dùng pooler của Supabase
+- `DIRECT_URL` dùng direct DB endpoint của Supabase
+- Thêm `sslmode=require`
+- `prisma.config.ts` đã ưu tiên nạp `.env.local`
+- `psql`, `npm run db:check`, `prisma generate`, và `prisma migrate status` ngoài sandbox đều hoạt động
 
 ## Trạng thái hiện tại
 
-| Component | Status | Ghi chú |
-|-----------|--------|---------|
-| PostgreSQL | ✅ Running | Supabase (production), localhost (dev) |
-| Prisma schema + migrations | ✅ Done | 3 migrations + ABANDONED enum |
-| Seed data | ✅ Done | Admin + demo user, 45 câu hỏi |
-| NextAuth Google OAuth | ✅ Done | JWT, env validation, disabled user handling |
-| DISC test flow | ✅ Done | Full flow + stale session detection |
-| Logic test flow | ✅ Done | 15 câu, reasoning rubric 0/1/3 |
-| Situation test flow | ✅ Done | 10 câu, 4 chiều năng lực |
-| Thần số học | ✅ Done | 6 chỉ số, chuẩn Pythagoras, dedup đúng |
-| AI Insight (Groq) | ✅ Done | Cần GROQ_API_KEY. Fallback rule-based cho DISC/Logic/Situation |
-| Landing page | ✅ Done | Liquid Glass, scroll animations, noscript fallback |
-| Auth pages | ✅ Done | Google OAuth, callbackUrl sanitized |
-| Result page | ✅ Done | Dynamic per test type, maxScores từ DB |
-| Security | ✅ Done | Headers, CSP, CSRF, rate limit, prompt sanitize, env validation |
-| ESLint | ✅ Done | 0 errors — quality gate hoạt động |
-| Admin Dashboard | ⚠️ Placeholder | Stats page, chưa có CRUD |
-| SEO | ⚠️ Cơ bản | sitemap + robots, chưa có OG/Twitter |
-| Hồ sơ nhân sự `/ho-so` | ❌ Chưa làm | |
-| Lịch sử test `/history` | ❌ Chưa làm | |
-| Knowledge upload (RAG) | ❌ Chưa làm | |
-| AI Insight cho Numerology | ⚠️ Chưa có fallback | Groq xử lý được, nhưng fallback rule-based chưa viết |
-| Test suite | ❌ Chưa có | Không có *.test.*, *.spec.* |
-| Docker / VPS deploy | ❌ Chưa có | Cần Dockerfile, docker-compose |
-| Responsive testing | ⚠️ Chưa test kỹ | CSS mobile-first nhưng chưa verify |
+| Phần | Status | Ghi chú |
+|------|--------|---------|
+| Prisma schema | ✅ Done | Schema hiện khớp DB thật |
+| Prisma migrations | ✅ Done | Migration singleton insight đã apply |
+| Prisma CLI | ✅ Done | Hoạt động khi có network thực; trong sandbox có thể fail vì bị chặn mạng |
+| Supabase connection | ✅ Done | `DATABASE_URL` = pooler, `DIRECT_URL` = direct DB |
+| Google OAuth | ✅ Done | Runtime-ready, không làm fail build nữa |
+| DISC flow | ✅ Done | Hoàn chỉnh |
+| Logic flow | ✅ Done | Hoàn chỉnh |
+| Situation flow | ✅ Done | Hoàn chỉnh |
+| Numerology | ✅ Done | Hoàn chỉnh |
+| AI insight tổng hợp | ✅ Done | Chỉ cho DISC + numerology + nghề nghiệp |
+| AI insight cho Logic/Situation | ⛔ Intentionally disabled | Không đủ dữ liệu cho “đánh giá tổng thể” theo scope mới |
+| Admin dashboard | ⚠️ Placeholder | Chỉ có stats page |
+| Knowledge upload / RAG | ❌ Chưa làm | Schema có nhưng flow chưa có |
+| `/ho-so` | ❌ Chưa làm | Route protected có trong middleware nhưng chưa có page |
+| `/history` | ❌ Chưa làm | Tương tự |
+| Test suite | ❌ Chưa có | Chưa có unit/integration tests |
+| Deploy VPS / Docker | ⚠️ Chưa hoàn chỉnh | Có Dockerfile nhưng chưa chốt full deploy runbook trong repo |
 
-## Bước tiếp theo
+## Bước tiếp theo cần làm
 
 ### Ưu tiên cao
-1. **Deploy lên GCP VPS** — Tạo Dockerfile + docker-compose, đổi Prisma binaryTargets sang `debian-openssl-3.0.x`, thêm `output: 'standalone'` vào next.config.ts, setup Nginx + SSL
-2. **Admin Dashboard đầy đủ** — CRUD câu hỏi, quản lý users, AI config, knowledge upload
-3. **Test suite** — Vitest + Testing Library cho business logic (scoring, numerology, auth, session dedup)
+1. **Admin dashboard thật sự usable**
+   - CRUD question bank
+   - quản lý users
+   - cấu hình AI
+   - review insight/session
+
+2. **Viết test cho các phần lõi**
+   - numerology calculation
+   - `getInsightEligibility()`
+   - scoring/meta computation
+   - auth callback/middleware logic
+
+3. **Hoàn thiện deploy documentation**
+   - chốt runbook Docker/VPS
+   - phân biệt rõ env cho dev / staging / prod
+   - mô tả cách chạy Prisma ngoài môi trường CI/CD có network
 
 ### Ưu tiên trung bình
-4. **AI Insight cho Numerology** — Thêm `generateNumerologyFallback()` trong `generate-insight.ts`
-5. **Hồ sơ nhân sự** `/ho-so` — Profile page, lịch sử test, radar chart tổng hợp
-6. **SEO nâng cao** — OpenGraph images, Twitter cards, metadataBase, JSON-LD structured data
-7. **Result page SSR** — Refactor từ full client component sang partial Server Component (giảm waterfall)
+4. **Làm `/history` và `/ho-so`**
+   - history list
+   - profile view
+   - gom các result session theo user
+
+5. **Nâng cấp result page**
+   - chuyển bớt fetch client-side sang server-side
+   - giảm waterfall khi vào trang kết quả
+
+6. **RAG / Knowledge upload**
+   - upload docs
+   - parse/chunk
+   - inject context vào AI insight
 
 ### Ưu tiên thấp
-8. **RAG / Knowledge upload** — PDF/DOC parsing, vector storage, AI context enrichment
-9. **Responsive testing** — Verify mobile/tablet trên tất cả pages
-10. **next-auth v5 migration** — Chuyển từ v4 sang Auth.js khi stable (breaking changes lớn)
+7. **SEO nâng cao**
+   - OG images
+   - Twitter cards
+   - metadataBase
+   - JSON-LD
 
-## Quyết định quan trọng & Lý do
+8. **Responsive / UX QA**
+   - test kỹ mobile/tablet
+   - review loading/error states ở tất cả route
+
+## Quyết định quan trọng và lý do
 
 | Quyết định | Lý do |
 |------------|-------|
-| **Google OAuth only** (bỏ email/password) | Giảm attack surface (không cần bcrypt, timing attack). UX đơn giản hơn. Auto-create user lần đầu đăng nhập. |
-| **NextAuth v4** (không v5) | v5 vẫn có breaking changes. v4 đã battle-tested với Next.js 15 (dù không officially supported). |
-| **JWT session** (không database session) | Không cần Prisma Adapter, đơn giản hơn. Role sync mỗi 1 phút + disabled flag bù đắp. |
-| **Groq API** (không Claude/Anthropic) | Free tier 14.400 req/ngày. LLaMA 3.1 đủ tốt cho HR analysis. Dễ đổi sang provider khác (OpenAI-compatible). |
-| **Server Actions cho mutations** | Secure hơn API routes — tự validate CSRF. Dùng cho startTest, submitAnswer, completeTest, saveNumerology. |
-| **API Routes cho GET** | Cần fetch từ client components (useEffect). Server Actions chỉ dùng cho mutations. |
-| **Zod v4** (không react-hook-form) | Chỉ có 2-4 field forms, không cần library nặng. Zod validate cả client + server. |
-| **JSON scores trên Answer** | Flexible scoring: DISC `{D:3,I:1}`, Logic `{correct:1,reasoning:3}`, Situation `{leadership:2}`. |
-| **AIInsight tách khỏi TestSession** | Support re-analysis. POST endpoint check existing trước → không tạo duplicate. |
-| **Dynamic maxScores từ DB** | Không hardcode số câu hỏi. `computeScoreMeta()` query max possible per dimension từ actual answers. |
-| **Shared TestRunner component** | 3 test pages giảm từ ~235 dòng → ~20 dòng mỗi file. Fix bug 1 chỗ thay vì 3. |
-| **Thần số học standalone `/than-so-hoc`** | Khác biệt cơ bản với MCQ tests (không có Q&A flow). Tách route riêng, UX phù hợp hơn. |
-| **Numerology tính client-side, lưu server-side** | Instant UX (không chờ API), nhưng server recalculate để defense-in-depth. |
-| **In-memory rate limiter** (không Redis) | MVP single-instance. Trên VPS persistent process hoạt động tốt. Upgrade Redis khi PM2 cluster mode. |
-| **Stale session auto-abandon** | Nếu admin thay đổi question bank, user đang làm dở sẽ bị stuck. Auto abandon + recreate giải quyết. |
-| **Token disabled flag** | Middleware check `token.id` + `!token.disabled`. User bị ban → token bị invalidate ngay, không phải chờ hết 7 ngày JWT. |
-| **Insight duplicate prevention** | POST endpoint check existing insight trước. Nếu đã có → trả lại, không gọi AI lại. Tiết kiệm quota + tránh data rác. |
-| **CSP header whitelist** | Google OAuth, Google Fonts, Google avatar images. Chặn inline script injection từ XSS. |
-| **GCP VPS** (thay vì Vercel) | Vercel Hobby timeout 10s giết AI insight (30s). VPS không giới hạn. In-memory rate limiter hoạt động đúng. Chi phí dự đoán được ($7-15/tháng). Data sovereignty cho HR data nhạy cảm. |
+| **Bỏ `next/font/google`** | `next/font/google` làm build phụ thuộc mạng Google. Khi build server không resolve được `fonts.googleapis.com`, build fail. Chuyển sang font stack local/system để build deterministic hơn. |
+| **AI insight chỉ áp dụng cho DISC** | Scope mới là “đánh giá tổng thể dựa trên DISC + thần số học + nghề nghiệp”. Logic/Situation không đủ cùng loại tín hiệu nên nếu cố generate sẽ tạo insight sai bản chất. |
+| **`AIInsight` là singleton theo session** | Tránh duplicate, đơn giản hóa API/result page, và đảm bảo idempotent khi auto-generate hoặc double-submit. |
+| **Dùng `upsert` cho insight** | Chặn race condition tốt hơn so với create + check tồn tại rời rạc. |
+| **Origin check so sánh origin thật** | Cách cũ dùng `origin.includes(host)` có thể bị bypass. So sánh bằng `URL.origin` an toàn hơn. |
+| **Auth env không fail build toàn cục** | Thiếu Google OAuth env không nên làm sập toàn bộ build; chỉ nên làm auth không hoạt động ở runtime. |
+| **Supabase dùng 2 URL khác nhau** | `DATABASE_URL` nên đi qua pooler để app runtime ổn định; `DIRECT_URL` phải đi vào direct DB endpoint để Prisma migration/schema engine làm việc đúng. |
+| **Password trong URL phải encode** | Password có `@` là hợp lệ, nhưng khi đưa vào URI phải encode (`%40`) để parser không cắt sai phần host/userinfo. |
+| **Thêm `db:check` script** | Có một lệnh dùng đúng Prisma Client của app sẽ giúp phân biệt nhanh lỗi env, lỗi DB, và lỗi Prisma CLI/sandbox. |
+| **Prisma ưu tiên `.env.local`** | Tránh Prisma CLI vô tình đọc `.env` local Postgres khi app runtime đang chạy bằng Supabase trong `.env.local`. |
 
 ## Rules
 

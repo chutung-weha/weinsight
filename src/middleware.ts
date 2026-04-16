@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 const authRoutes = ["/dang-nhap"];
-const protectedRoutes = ["/test", "/result", "/ho-so", "/history", "/than-so-hoc"];
+const protectedRoutes = ["/test", "/result", "/than-so-hoc"];
 
 export async function middleware(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
@@ -47,8 +47,6 @@ export const config = {
   matcher: [
     "/test/:path*",
     "/result/:path*",
-    "/ho-so/:path*",
-    "/history/:path*",
     "/than-so-hoc",
     "/admin/:path*",
     "/dang-nhap",

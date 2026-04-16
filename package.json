@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "db:check": "node scripts/check-db-connection.mjs",
     "db:migrate": "npx prisma migrate dev",
     "db:seed": "npx tsx prisma/seed.ts",
     "db:reset": "npx prisma migrate reset",

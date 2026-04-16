@@ -11,7 +11,7 @@ import {
   type CompleteTestInput,
 } from "@/lib/validations/test";
 import type { TestType } from "@prisma/client";
-import { generateInsight } from "@/lib/ai/generate-insight";
+import { generateAndSaveInsight, getInsightEligibility } from "@/lib/ai/generate-insight";
 
 export async function startTest(data: StartTestInput) {
   const user = await getCurrentUser();
@@ -187,6 +187,9 @@ export async function completeTest(data: CompleteTestInput) {
       userId: true,
       status: true,
       testType: true,
+      candidateName: true,
+      dateOfBirth: true,
+      occupation: true,
       answers: {
         select: {
           questionId: true,
@@ -256,21 +259,17 @@ export async function completeTest(data: CompleteTestInput) {
   // Nếu fail, test vẫn COMPLETED — insight có thể re-generate sau
   let aiInsight = null;
   try {
-    const { insight, config } = await generateInsight({ sessionId });
-
-    aiInsight = await prisma.aIInsight.create({
-      data: {
-        sessionId,
-        summary: insight.summary,
-        strengths: insight.strengths,
-        improvements: insight.improvements,
-        suitableRoles: insight.suitableRoles,
-        recommendation: insight.recommendation,
-        fullResponse: JSON.stringify(insight),
-        tone: config?.tone || "COACH",
-        objective: config?.objective || "EVALUATION",
-      },
+    const eligibility = getInsightEligibility({
+      testType: session.testType,
+      status: "COMPLETED",
+      candidateName: session.candidateName,
+      dateOfBirth: session.dateOfBirth,
+      occupation: session.occupation,
     });
+
+    if (eligibility.eligible) {
+      aiInsight = await generateAndSaveInsight(sessionId);
+    }
   } catch (error) {
     console.error("AI Insight generation failed:", error);
   }

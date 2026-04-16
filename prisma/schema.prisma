@@ -134,7 +134,7 @@ model TestSession {
 
   user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   answers    TestAnswer[]
-  aiInsights AIInsight[]
+  aiInsight  AIInsight?
 
   @@index([userId, testType])
   @@index([status])
@@ -158,12 +158,12 @@ model TestAnswer {
   @@map("test_answers")
 }
 
-// ─── AI INSIGHT (tách riêng — hỗ trợ re-analyze) ─────────
-// 1 session có thể có nhiều insight (khi admin đổi prompt/thêm knowledge)
+// ─── AI INSIGHT (snapshot tổng hợp theo session) ─────────
+// Mỗi session chỉ giữ 1 insight tổng hợp mới nhất để đảm bảo idempotent
 
 model AIInsight {
   id        String @id @default(cuid())
-  sessionId String
+  sessionId String @unique
 
   // Kết quả AI trả về — structured
   summary       String  // Tóm tắt ngắn

@@ -2,13 +2,14 @@ import { prisma } from "@/lib/prisma";
 import { computeScoreMeta } from "@/lib/scoring";
 import { calculateAll } from "@/lib/numerology";
 import { LIFE_PATH } from "@/lib/numerology-descriptions";
-import type { DISCScores, LogicScores, SituationScores } from "@/types/test";
+import type { DISCScores } from "@/types/test";
+import type { TestType } from "@prisma/client";
 
 interface GenerateInsightInput {
   sessionId: string;
 }
 
-interface InsightResult {
+export interface InsightResult {
   summary: string;
   personalityProfile: string;
   numerologyInsight: string;
@@ -19,34 +20,230 @@ interface InsightResult {
   recommendation: string;
 }
 
-/**
- * Sanitize user input trước khi đưa vào LLM prompt.
- * Loại bỏ ký tự điều khiển, cắt độ dài, ngăn prompt injection cơ bản.
- */
-function sanitizeForPrompt(input: string | null | undefined, maxLength = 200): string {
-  if (!input) return "";
-  return input
-    .replace(/[\x00-\x1F\x7F]/g, "") // remove control characters
-    .replace(/\n{3,}/g, "\n\n")       // collapse excessive newlines
-    .trim()
-    .slice(0, maxLength);
-}
-
-// DISC profile descriptions cho AI prompt context
-const discDescriptions: Record<string, string> = {
-  D: "Dominance — Quyết đoán, tập trung kết quả, thích thách thức",
-  I: "Influence — Cởi mở, nhiệt tình, giỏi giao tiếp",
-  S: "Steadiness — Kiên nhẫn, đáng tin cậy, thích ổn định",
-  C: "Conscientiousness — Cẩn thận, logic, tập trung chất lượng",
-};
-
 interface GenerateInsightResult {
   insight: InsightResult;
   config: { tone: "DIRECT" | "GENTLE" | "COACH"; objective: "RECRUITMENT" | "TRAINING" | "EVALUATION" } | null;
 }
 
+interface InsightEligibilityInput {
+  testType: TestType | string;
+  status?: string;
+  candidateName?: string | null;
+  dateOfBirth?: Date | null;
+  occupation?: string | null;
+}
+
+interface InsightEligibilityResult {
+  eligible: boolean;
+  reason: string | null;
+}
+
+function sanitizeForPrompt(input: string | null | undefined, maxLength = 200): string {
+  if (!input) return "";
+  return input
+    .replace(/[\x00-\x1F\x7F]/g, "")
+    .replace(/\n/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
+const discProfiles = {
+  D: {
+    title: "Dominance",
+    summary: "quyết đoán, tập trung kết quả và thích thử thách",
+    strengths: ["ra quyết định nhanh", "chịu áp lực tốt", "đẩy tiến độ mạnh", "thấy rõ mục tiêu"],
+    risks: ["thiếu kiên nhẫn", "dễ áp lực hóa tập thể", "bỏ qua cảm xúc đồng đội"],
+    roles: ["Trưởng nhóm kinh doanh", "Project Manager", "Business Development Lead"],
+  },
+  I: {
+    title: "Influence",
+    summary: "cởi mở, truyền cảm hứng và giàu năng lượng kết nối",
+    strengths: ["giao tiếp thuyết phục", "tạo động lực", "xây quan hệ nhanh", "lan tỏa tinh thần tích cực"],
+    risks: ["thiếu chiều sâu chi tiết", "dễ cảm tính", "khó bền ở việc lặp lại"],
+    roles: ["Sales", "Marketing", "Account Manager"],
+  },
+  S: {
+    title: "Steadiness",
+    summary: "ổn định, kiên nhẫn và đáng tin cậy",
+    strengths: ["lắng nghe tốt", "hợp tác bền", "giữ nhịp đội nhóm", "kiên trì theo quy trình"],
+    risks: ["ngại thay đổi nhanh", "ít va chạm cần thiết", "khó phản biện mạnh"],
+    roles: ["HRBP", "Customer Success", "Operations Coordinator"],
+  },
+  C: {
+    title: "Conscientiousness",
+    summary: "cẩn trọng, logic và ưu tiên chất lượng",
+    strengths: ["phân tích sắc", "chuẩn hóa tốt", "kiểm soát rủi ro", "giữ chất lượng đầu ra"],
+    risks: ["dễ cầu toàn", "quyết định chậm", "ngại môi trường mơ hồ"],
+    roles: ["Data Analyst", "QA Engineer", "Finance Analyst"],
+  },
+} as const;
+
+export function getInsightEligibility(input: InsightEligibilityInput): InsightEligibilityResult {
+  if (input.testType !== "DISC") {
+    return {
+      eligible: false,
+      reason: "AI insight tổng hợp hiện chỉ hỗ trợ bài DISC vì cần đối chiếu DISC + thần số học + nghề nghiệp.",
+    };
+  }
+
+  if (input.status && input.status !== "COMPLETED") {
+    return { eligible: false, reason: "Phiên test chưa hoàn thành." };
+  }
+
+  if (!sanitizeForPrompt(input.candidateName, 100)) {
+    return { eligible: false, reason: "Thiếu họ tên để tính thần số học." };
+  }
+
+  if (!input.dateOfBirth) {
+    return { eligible: false, reason: "Thiếu ngày sinh để tính thần số học." };
+  }
+
+  if (!sanitizeForPrompt(input.occupation, 100)) {
+    return { eligible: false, reason: "Thiếu nghề nghiệp để AI đối chiếu mức độ phù hợp công việc." };
+  }
+
+  return { eligible: true, reason: null };
+}
+
+function analyzeDisc(scores: DISCScores) {
+  const total = Object.values(scores).reduce((sum, value) => sum + value, 0) || 1;
+  const percentages = {
+    D: Math.round(((scores.D || 0) / total) * 100),
+    I: Math.round(((scores.I || 0) / total) * 100),
+    S: Math.round(((scores.S || 0) / total) * 100),
+    C: Math.round(((scores.C || 0) / total) * 100),
+  };
+
+  const ranking = Object.entries(percentages)
+    .sort((a, b) => b[1] - a[1])
+    .map(([key]) => key as keyof typeof percentages);
+
+  return {
+    dominant: ranking[0],
+    secondary: ranking[1],
+    weakest: ranking[ranking.length - 1],
+    percentages,
+  };
+}
+
+function inferOccupationFamily(rawOccupation: string) {
+  const occupation = rawOccupation.toLowerCase();
+
+  if (/(kinh doanh|sales|sale|marketing|account|business development|tư vấn|chăm sóc khách hàng)/.test(occupation)) {
+    return {
+      label: "nhóm nghề thiên về giao tiếp và ảnh hưởng",
+      preferredDisc: ["I", "D"],
+      preferredLifePaths: [3, 5, 1],
+    };
+  }
+
+  if (/(kỹ sư|engineer|developer|lập trình|data|phân tích|analyst|qa|kiểm thử|tài chính|kế toán)/.test(occupation)) {
+    return {
+      label: "nhóm nghề thiên về phân tích và độ chính xác",
+      preferredDisc: ["C", "S"],
+      preferredLifePaths: [4, 7, 11, 22],
+    };
+  }
+
+  if (/(quản lý|manager|lead|trưởng|giám đốc|director|project|product)/.test(occupation)) {
+    return {
+      label: "nhóm nghề thiên về dẫn dắt và chịu trách nhiệm kết quả",
+      preferredDisc: ["D", "I"],
+      preferredLifePaths: [1, 8, 22],
+    };
+  }
+
+  if (/(nhân sự|hr|operations|vận hành|hành chính|giáo viên|đào tạo|support|hỗ trợ)/.test(occupation)) {
+    return {
+      label: "nhóm nghề thiên về hỗ trợ con người và giữ ổn định hệ thống",
+      preferredDisc: ["S", "I"],
+      preferredLifePaths: [2, 6, 9],
+    };
+  }
+
+  return {
+    label: "nhóm nghề chưa được phân loại rõ",
+    preferredDisc: [] as string[],
+    preferredLifePaths: [] as number[],
+  };
+}
+
+function uniqueStrings(items: string[], limit = 6) {
+  return [...new Set(items.map((item) => item.trim()).filter(Boolean))].slice(0, limit);
+}
+
+function normalizeInsightResult(input: Partial<InsightResult>): InsightResult {
+  return {
+    summary: String(input.summary || "").trim(),
+    personalityProfile: String(input.personalityProfile || "").trim(),
+    numerologyInsight: String(input.numerologyInsight || "").trim(),
+    strengths: uniqueStrings(Array.isArray(input.strengths) ? input.strengths.map(String) : [], 5),
+    improvements: uniqueStrings(Array.isArray(input.improvements) ? input.improvements.map(String) : [], 5),
+    suitableRoles: uniqueStrings(Array.isArray(input.suitableRoles) ? input.suitableRoles.map(String) : [], 5),
+    developmentPlan: uniqueStrings(Array.isArray(input.developmentPlan) ? input.developmentPlan.map(String) : [], 5),
+    recommendation: String(input.recommendation || "").trim(),
+  };
+}
+
+function buildFallbackInsight(input: {
+  scores: DISCScores;
+  candidateName: string;
+  occupation: string;
+  numerology: ReturnType<typeof calculateAll>;
+}): InsightResult {
+  const disc = analyzeDisc(input.scores);
+  const dominantProfile = discProfiles[disc.dominant];
+  const secondaryProfile = discProfiles[disc.secondary];
+  const lifePathData = LIFE_PATH[input.numerology.lifePath];
+  const occupationFamily = inferOccupationFamily(input.occupation);
+
+  const discFit = occupationFamily.preferredDisc.includes(disc.dominant)
+    ? `Profile DISC trội ${disc.dominant} đang khá khớp với ${occupationFamily.label}.`
+    : occupationFamily.preferredDisc.length > 0
+      ? `Nghề nghiệp hiện tại thiên về ${occupationFamily.label}, trong khi DISC trội lại là ${disc.dominant}; đây là điểm cần theo dõi để tránh lệch vai trò.`
+      : `Nghề nghiệp hiện tại chưa đủ dữ liệu để đối chiếu sâu theo cụm nghề, nên mức độ phù hợp được đánh giá ở mức định hướng.`;
+
+  const lifePathFit = occupationFamily.preferredLifePaths.includes(input.numerology.lifePath)
+    ? `Số chủ đạo ${input.numerology.lifePath} cũng ủng hộ hướng phát triển nghề nghiệp hiện tại.`
+    : `Số chủ đạo ${input.numerology.lifePath} cho thấy động lực cốt lõi có thể khác kỳ vọng của vai trò hiện tại, nên cần thiết kế công việc phù hợp hơn.`;
+
+  const strengths = uniqueStrings([
+    `Nổi bật ở chiều ${disc.dominant} (${dominantProfile.summary}).`,
+    ...dominantProfile.strengths.map((item) => `Có xu hướng ${item}.`),
+    ...(lifePathData?.strengths || []).map((item) => `Theo thần số học, điểm mạnh nền là ${item.toLowerCase()}.`),
+  ], 4);
+
+  const improvements = uniqueStrings([
+    ...dominantProfile.risks.map((item) => `Cần kiểm soát xu hướng ${item}.`),
+    ...(lifePathData?.weaknesses || []).map((item) => `Theo thần số học, cần lưu ý ${item.toLowerCase()}.`),
+    `Bổ sung thêm năng lực ở chiều ${disc.weakest} để profile làm việc cân bằng hơn.`,
+  ], 4);
+
+  const suitableRoles = uniqueStrings([
+    ...dominantProfile.roles,
+    ...(lifePathData?.careers || []),
+    input.occupation,
+  ], 4);
+
+  const developmentPlan = uniqueStrings([
+    `Trong 30-60 ngày, giao việc bám vào thế mạnh ${discProfiles[disc.dominant].title} nhưng có KPI rõ để kiểm chứng độ bền.`,
+    `Trong 60-90 ngày, thêm một mục tiêu phát triển ở chiều ${disc.weakest} để tránh lệch một màu hành vi.`,
+    `Thiết kế công việc theo hướng ${occupationFamily.label}, nhưng vẫn giữ không gian cho động lực lõi của số chủ đạo ${input.numerology.lifePath}.`,
+  ], 4);
+
+  return {
+    summary: `${input.candidateName} có profile DISC trội ${disc.dominant}/${disc.secondary}, kết hợp với số chủ đạo ${input.numerology.lifePath}. Tổng thể cho thấy phong cách làm việc ${dominantProfile.summary}, và mức phù hợp với nghề nghiệp hiện tại "${input.occupation}" ở mức ${occupationFamily.preferredDisc.includes(disc.dominant) ? "tốt" : "cần hiệu chỉnh"}.`,
+    personalityProfile: `DISC cho thấy chiều trội là ${disc.dominant} (${dominantProfile.summary}), còn chiều phụ là ${disc.secondary} (${secondaryProfile.summary}). Điều này cho thấy cách làm việc tự nhiên của ${input.candidateName} nghiêng về ${dominantProfile.summary}, nhưng vẫn có lớp bổ trợ từ ${secondaryProfile.summary}. ${discFit}`,
+    numerologyInsight: `Số chủ đạo ${input.numerology.lifePath}${lifePathData ? ` - ${lifePathData.title}` : ""} cho thấy động lực lõi thiên về ${lifePathData?.summary?.toLowerCase() || "phát triển bản thân và tạo giá trị"}. Chỉ số sứ mệnh ${input.numerology.expression}, linh hồn ${input.numerology.soulUrge}, và nhân cách ${input.numerology.personality} bổ sung góc nhìn về cách thể hiện năng lực ra bên ngoài. ${lifePathFit}`,
+    strengths,
+    improvements,
+    suitableRoles,
+    developmentPlan,
+    recommendation: `${discFit} ${lifePathFit} Khuyến nghị là dùng nghề nghiệp hiện tại làm bối cảnh đánh giá, nhưng giao vai trò và KPI theo đúng thế mạnh DISC trội và động lực của số chủ đạo, thay vì chỉ nhìn vào chức danh hiện tại.`,
+  };
+}
+
 export async function generateInsight({ sessionId }: GenerateInsightInput): Promise<GenerateInsightResult> {
-  // Fetch session + config
   const [session, config] = await Promise.all([
     prisma.testSession.findUnique({
       where: { id: sessionId },
@@ -64,91 +261,102 @@ export async function generateInsight({ sessionId }: GenerateInsightInput): Prom
   ]);
 
   if (!session || session.status !== "COMPLETED" || !session.totalScores) {
-    throw new Error("Session chưa hoàn thành");
+    throw new Error("Session chưa hoàn thành.");
   }
 
-  const scores = session.totalScores as Record<string, number>;
-  const tone = config?.tone || "COACH";
-  const objective = config?.objective || "EVALUATION";
+  const eligibility = getInsightEligibility({
+    testType: session.testType,
+    status: session.status,
+    candidateName: session.candidateName,
+    dateOfBirth: session.dateOfBirth,
+    occupation: session.occupation,
+  });
+
+  if (!eligibility.eligible) {
+    throw new Error(eligibility.reason || "Session không đủ điều kiện tạo AI insight.");
+  }
+
+  const scores = session.totalScores as unknown as DISCScores;
   const candidateName = sanitizeForPrompt(session.candidateName || session.user.name || "Ứng viên", 100);
-  const sessionDob = session.dateOfBirth;
-  const sessionOccupation = sanitizeForPrompt(session.occupation, 100);
+  const occupation = sanitizeForPrompt(session.occupation, 100);
+  const sessionDob = session.dateOfBirth as Date;
+  const numerology = calculateAll(
+    candidateName,
+    sessionDob.getUTCDate(),
+    sessionDob.getUTCMonth() + 1,
+    sessionDob.getUTCFullYear()
+  );
+  const lifePathData = LIFE_PATH[numerology.lifePath];
+  const disc = analyzeDisc(scores);
+  const { maxScores } = await computeScoreMeta(session.testType);
 
-  const { maxScores, questionCount } = await computeScoreMeta(session.testType);
-
-  // Tính thần số học nếu có đủ thông tin
-  let numerologyContext = "";
-  if (candidateName && sessionDob) {
-    const dob = new Date(sessionDob);
-    const numResult = calculateAll(candidateName, dob.getDate(), dob.getMonth() + 1, dob.getFullYear());
-    const lifePathDesc = LIFE_PATH[numResult.lifePath];
-    numerologyContext = `
-Kết quả Thần số học Pythagoras (tính từ họ tên + ngày sinh):
-- Số chủ đạo (Life Path): ${numResult.lifePath} — "${lifePathDesc?.title || ""}" — ${lifePathDesc?.summary || ""}
-- Chỉ số thái độ (Attitude): ${numResult.attitude}
-- Năng lực tự nhiên (Natural Ability): ${numResult.naturalAbility}
-- Chỉ số sứ mệnh (Expression): ${numResult.expression}
-- Chỉ số linh hồn (Soul Urge): ${numResult.soulUrge}
-- Chỉ số nhân cách (Personality): ${numResult.personality}
-${lifePathDesc ? `\nĐiểm mạnh theo thần số học: ${lifePathDesc.strengths.join(", ")}\nĐiểm yếu theo thần số học: ${lifePathDesc.weaknesses.join(", ")}\nNghề nghiệp phù hợp theo thần số học: ${lifePathDesc.careers.join(", ")}` : ""}`;
-  }
-
-  // Nếu chưa có GROQ_API_KEY → dùng rule-based fallback
   if (!process.env.GROQ_API_KEY) {
-    return { insight: generateFallbackInsight(scores, session.testType, candidateName, questionCount, maxScores), config };
+    return { insight: buildFallbackInsight({ scores, candidateName, occupation, numerology }), config };
   }
 
-  // Gọi Groq API
   const toneMap = {
-    DIRECT: "thẳng thắn, ngắn gọn, tập trung vào kết luận",
-    GENTLE: "nhẹ nhàng, khích lệ, tập trung điểm mạnh trước",
-    COACH: "như một coach chuyên nghiệp, cân bằng giữa nhận định và khuyến nghị",
+    DIRECT: "thẳng, rõ kết luận, tránh vòng vo",
+    GENTLE: "mềm nhưng vẫn cụ thể, ưu tiên ngôn ngữ xây dựng",
+    COACH: "đóng vai coach nhân sự cấp cao, cân bằng giữa phản biện và định hướng phát triển",
   };
 
   const objectiveMap = {
-    RECRUITMENT: "đánh giá phù hợp cho vị trí tuyển dụng",
-    TRAINING: "xác định nhu cầu đào tạo và phát triển",
-    EVALUATION: "đánh giá hiệu suất và năng lực tổng thể",
+    RECRUITMENT: "ra quyết định tuyển dụng và phân vai thử việc",
+    TRAINING: "thiết kế kế hoạch đào tạo và phát triển",
+    EVALUATION: "đánh giá mức độ phù hợp vai trò hiện tại và định hướng tiếp theo",
   };
 
-  const scoreDescriptions = getScoreDescriptions(session.testType);
-
   const answersContext = session.answers
-    .map((a) => `Q: ${sanitizeForPrompt(a.question.content, 500)}\nA: ${sanitizeForPrompt(a.answer.text, 500)}`)
+    .map((item) => `Q: ${sanitizeForPrompt(item.question.content, 400)}\nA: ${sanitizeForPrompt(item.answer.text, 400)}`)
     .join("\n\n");
 
-  const dobStr = sessionDob
-    ? new Date(sessionDob).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" })
-    : "Chưa xác định";
+  const prompt = `Bạn là chuyên gia đánh giá nhân sự cấp cao. Hãy đưa ra ĐÁNH GIÁ TỔNG THỂ dựa trên 3 nguồn duy nhất:
+1. Nghề nghiệp hiện tại
+2. Kết quả DISC
+3. Thần số học Pythagoras
 
-  const systemMessage = `Bạn là chuyên gia đánh giá nhân sự cấp cao của WEHA GROUP. Bạn luôn xưng hô ngôi thứ hai là "bạn" khi nói về nhân sự được đánh giá. TUYỆT ĐỐI KHÔNG dùng "ông", "ông ta", "anh", "chị", "họ", "người này", "nhân sự này". Luôn dùng "bạn" (VD: "bạn có khả năng...", "bạn nên...", "Điểm mạnh của bạn là..."). Giọng văn thân thiện, gần gũi như đang coaching trực tiếp cho người đó.`;
-
-  const prompt = `Hãy phân tích TOÀN DIỆN và CHI TIẾT kết quả DISC + Thần số học Pythagoras sau đây. Nhớ: LUÔN gọi người được đánh giá là "bạn", KHÔNG BAO GIỜ gọi là "ông", "ông ta", "anh ấy", "chị ấy" hay dùng tên riêng kèm ngôi thứ ba.
+Nguyên tắc bắt buộc:
+- Luôn gọi người được đánh giá là "bạn".
+- Không được nói như thể đang đánh giá một bài LOGIC hay SITUATION; đây là bài DISC có đối chiếu thần số học và nghề nghiệp.
+- Không được suy diễn vượt dữ liệu. Nếu có mâu thuẫn giữa nghề nghiệp hiện tại và profile, phải chỉ ra thẳng.
+- Phần recommendation phải mang tính hành động, không chỉ mô tả.
 
 Thông tin nhân sự:
 - Tên: ${candidateName}
-- Ngày sinh: ${dobStr}
-- Nghề nghiệp: ${sessionOccupation || "Chưa xác định"}
-- Đơn vị: ${session.user.department || "Chưa xác định"}
+- Nghề nghiệp hiện tại: ${occupation}
+- Đơn vị: ${sanitizeForPrompt(session.user.department, 100) || "Chưa xác định"}
 
-═══ KẾT QUẢ DISC TEST (${questionCount} câu hỏi) ═══
-${Object.entries(scores).map(([k, v]) => `- ${k} (${scoreDescriptions[k] || k}): ${v}/${maxScores[k] || "?"} điểm (${maxScores[k] ? Math.round((v / maxScores[k]) * 100) : "?"}%)`).join("\n")}
-${numerologyContext ? `\n═══ KẾT QUẢ THẦN SỐ HỌC PYTHAGORAS ═══${numerologyContext}` : ""}
+Kết quả DISC:
+- D: ${scores.D}/${maxScores.D || "?"} (${disc.percentages.D}%)
+- I: ${scores.I}/${maxScores.I || "?"} (${disc.percentages.I}%)
+- S: ${scores.S}/${maxScores.S || "?"} (${disc.percentages.S}%)
+- C: ${scores.C}/${maxScores.C || "?"} (${disc.percentages.C}%)
+- Chiều trội: ${disc.dominant}
+- Chiều phụ: ${disc.secondary}
 
-═══ CÂU TRẢ LỜI CHI TIẾT ═══
+Kết quả thần số học:
+- Số chủ đạo: ${numerology.lifePath}${lifePathData ? ` - ${lifePathData.title}` : ""}
+- Chỉ số thái độ: ${numerology.attitude}
+- Năng lực tự nhiên: ${numerology.naturalAbility}
+- Chỉ số sứ mệnh: ${numerology.expression}
+- Chỉ số linh hồn: ${numerology.soulUrge}
+- Chỉ số nhân cách: ${numerology.personality}
+${lifePathData ? `- Mô tả số chủ đạo: ${lifePathData.summary}` : ""}
+${lifePathData ? `- Điểm mạnh numerology: ${lifePathData.strengths.join(", ")}` : ""}
+${lifePathData ? `- Điểm yếu numerology: ${lifePathData.weaknesses.join(", ")}` : ""}
+${lifePathData ? `- Nghề nghiệp numerology gợi ý: ${lifePathData.careers.join(", ")}` : ""}
+
+Một số câu trả lời DISC:
 ${answersContext}
 
-Yêu cầu phân tích:
-- Tone: ${toneMap[tone as keyof typeof toneMap]}
-- Mục tiêu: ${objectiveMap[objective as keyof typeof objectiveMap]}
-${sessionOccupation ? `- Cân nhắc nghề nghiệp "${sessionOccupation}" khi đưa ra nhận định` : ""}
+Mục tiêu đánh giá:
+- Tone: ${toneMap[config?.tone || "COACH"]}
+- Mục tiêu: ${objectiveMap[config?.objective || "EVALUATION"]}
 ${config?.customPrompt ? `- Hướng dẫn thêm: ${sanitizeForPrompt(config.customPrompt, 500)}` : ""}
-- KẾT HỢP cả DISC và Thần số học để phân tích toàn diện — tìm điểm tương đồng và bổ sung giữa 2 hệ thống
-- Đưa ra nhận định sâu sắc, cụ thể, KHÔNG chung chung
-- Mỗi mục strengths/improvements/developmentPlan phải có ít nhất 3-4 items chi tiết
 
-Trả lời bằng JSON với format chính xác sau (KHÔNG có markdown, KHÔNG có code block):
-{"summary":"Tóm tắt 3-4 câu tổng quan về profile nhân sự, kết hợp DISC + thần số học","personalityProfile":"Phân tích chi tiết tính cách: DISC profile chính + phụ kết hợp với số chủ đạo và các chỉ số thần số học cho thấy điều gì về con người này (3-5 câu)","numerologyInsight":"Phân tích riêng về thần số học: số chủ đạo + sứ mệnh + linh hồn cho thấy tiềm năng ẩn giấu gì, hướng phát triển tự nhiên (3-5 câu)","strengths":["Điểm mạnh 1 (chi tiết)","Điểm mạnh 2","Điểm mạnh 3","Điểm mạnh 4"],"improvements":["Cần cải thiện 1 (chi tiết)","Cần cải thiện 2","Cần cải thiện 3"],"suitableRoles":["Vai trò phù hợp 1","Vai trò 2","Vai trò 3"],"developmentPlan":["Bước 1: Hành động cụ thể trong 1-3 tháng","Bước 2: Mục tiêu 3-6 tháng","Bước 3: Định hướng dài hạn"],"recommendation":"Khuyến nghị tổng hợp chi tiết cho người này, kết hợp cả DISC + thần số học (3-5 câu)"}`;
+Trả lời bằng JSON thuần với đúng format:
+{"summary":"Tóm tắt 3-4 câu về mức độ phù hợp tổng thể giữa DISC, thần số học và nghề nghiệp hiện tại","personalityProfile":"Phân tích tích hợp DISC + nghề nghiệp: cách làm việc, điểm lệch, điểm phù hợp","numerologyInsight":"Phân tích riêng phần thần số học và cách nó bổ sung/điều chỉnh góc nhìn DISC","strengths":["..."],"improvements":["..."],"suitableRoles":["..."],"developmentPlan":["..."],"recommendation":"Khuyến nghị tổng hợp mang tính hành động, gắn với nghề nghiệp hiện tại"}
+`;
 
   const abortController = new AbortController();
   const timeout = setTimeout(() => abortController.abort(), 30_000);
@@ -164,298 +372,78 @@ Trả lời bằng JSON với format chính xác sau (KHÔNG có markdown, KHÔN
       body: JSON.stringify({
         model: "llama-3.1-8b-instant",
         messages: [
-          { role: "system", content: systemMessage },
+          {
+            role: "system",
+            content: "Bạn là chuyên gia đánh giá nhân sự. Bạn phản biện sắc nhưng công bằng, luôn bám dữ liệu, không tâng bốc vô căn cứ.",
+          },
           { role: "user", content: prompt },
         ],
         response_format: { type: "json_object" },
         max_tokens: 2048,
-        temperature: 0.7,
+        temperature: 0.5,
       }),
       signal: abortController.signal,
     });
-  } catch (err) {
+  } catch (error) {
     clearTimeout(timeout);
-    console.error("Groq API timeout or network error:", err);
-    return { insight: generateFallbackInsight(scores, session.testType, candidateName, questionCount, maxScores), config };
+    console.error("Groq API timeout or network error:", error);
+    return { insight: buildFallbackInsight({ scores, candidateName, occupation, numerology }), config };
   } finally {
     clearTimeout(timeout);
   }
 
   if (!response.ok) {
     console.error("Groq API error:", response.status);
-    return { insight: generateFallbackInsight(scores, session.testType, candidateName, questionCount, maxScores), config };
+    return { insight: buildFallbackInsight({ scores, candidateName, occupation, numerology }), config };
   }
 
-  let result;
+  let result: unknown;
   try {
     result = await response.json();
   } catch {
     console.error("Groq response is not valid JSON, using fallback");
-    return { insight: generateFallbackInsight(scores, session.testType, candidateName, questionCount, maxScores), config };
+    return { insight: buildFallbackInsight({ scores, candidateName, occupation, numerology }), config };
   }
 
-  const text = result.choices?.[0]?.message?.content || "";
+  const content = (result as { choices?: Array<{ message?: { content?: string } }> }).choices?.[0]?.message?.content || "";
 
   try {
-    const parsed = JSON.parse(text) as InsightResult;
+    const parsed = normalizeInsightResult(JSON.parse(content) as Partial<InsightResult>);
+    if (!parsed.summary || !parsed.recommendation) {
+      throw new Error("Insight content is incomplete.");
+    }
     return { insight: parsed, config };
   } catch {
     console.error("Failed to parse Groq response content, using fallback");
-    return { insight: generateFallbackInsight(scores, session.testType, candidateName, questionCount, maxScores), config };
+    return { insight: buildFallbackInsight({ scores, candidateName, occupation, numerology }), config };
   }
 }
 
-// Score descriptions cho mỗi loại test (dùng trong prompt)
-function getScoreDescriptions(testType: string): Record<string, string> {
-  switch (testType) {
-    case "DISC":
-      return discDescriptions;
-    case "LOGIC":
-      return {
-        correct: "Số câu trả lời đúng",
-        reasoning: "Điểm tư duy logic & suy luận",
-      };
-    case "SITUATION":
-      return {
-        leadership: "Khả năng lãnh đạo",
-        teamwork: "Tinh thần đồng đội",
-        communication: "Kỹ năng giao tiếp",
-        problemSolving: "Giải quyết vấn đề",
-      };
-    default:
-      return {};
-  }
-}
+export async function generateAndSaveInsight(sessionId: string) {
+  const { insight, config } = await generateInsight({ sessionId });
 
-// Rule-based fallback khi không có API key
-function generateFallbackInsight(
-  scores: Record<string, number>,
-  testType: string,
-  userName: string,
-  questionCount: number,
-  maxScores: Record<string, number>,
-): InsightResult {
-  switch (testType) {
-    case "DISC":
-      return generateDISCFallback(scores as unknown as DISCScores, userName);
-    case "LOGIC":
-      return generateLogicFallback(scores as unknown as LogicScores, userName, questionCount, maxScores);
-    case "SITUATION":
-      return generateSituationFallback(scores as unknown as SituationScores, userName, maxScores);
-    default:
-      return {
-        summary: `${userName} đã hoàn thành bài test ${testType}.`,
-        personalityProfile: "Chưa có đủ dữ liệu để phân tích.",
-        numerologyInsight: "Cần cấu hình GROQ_API_KEY để nhận phân tích chi tiết.",
-        strengths: ["Đã hoàn thành bài test"],
-        improvements: ["Cần thêm dữ liệu để đánh giá"],
-        suitableRoles: ["Chưa xác định"],
-        developmentPlan: ["Cấu hình GROQ_API_KEY để nhận kế hoạch phát triển"],
-        recommendation: "Vui lòng cấu hình GROQ_API_KEY để nhận AI Insight chi tiết.",
-      };
-  }
-}
-
-function generateDISCFallback(scores: DISCScores, userName: string): InsightResult {
-  const total = scores.D + scores.I + scores.S + scores.C || 1;
-  const pct = {
-    D: Math.round((scores.D / total) * 100),
-    I: Math.round((scores.I / total) * 100),
-    S: Math.round((scores.S / total) * 100),
-    C: Math.round((scores.C / total) * 100),
-  };
-
-  const sorted = Object.entries(pct).sort((a, b) => b[1] - a[1]);
-  const dominant = sorted[0][0];
-  const secondary = sorted[1][0];
-
-  const profileData: Record<string, {
-    title: string;
-    strengths: string[];
-    improvements: string[];
-    roles: string[];
-  }> = {
-    D: {
-      title: "Dominance — Người dẫn dắt",
-      strengths: ["Ra quyết định nhanh chóng", "Tập trung vào mục tiêu", "Không ngại thách thức", "Dẫn dắt nhóm hiệu quả"],
-      improvements: ["Cần lắng nghe nhiều hơn", "Kiên nhẫn với tiến độ của người khác"],
-      roles: ["Team Lead", "Project Manager", "Business Director"],
+  return prisma.aIInsight.upsert({
+    where: { sessionId },
+    update: {
+      summary: insight.summary,
+      strengths: insight.strengths,
+      improvements: insight.improvements,
+      suitableRoles: insight.suitableRoles,
+      recommendation: insight.recommendation,
+      fullResponse: JSON.stringify(insight),
+      tone: config?.tone || "COACH",
+      objective: config?.objective || "EVALUATION",
     },
-    I: {
-      title: "Influence — Người truyền cảm hứng",
-      strengths: ["Giao tiếp xuất sắc", "Tạo động lực cho team", "Sáng tạo trong giải pháp", "Xây dựng quan hệ tốt"],
-      improvements: ["Cần chú ý đến chi tiết hơn", "Quản lý thời gian hiệu quả hơn"],
-      roles: ["Business Development", "Sales Lead", "Marketing Manager"],
+    create: {
+      sessionId,
+      summary: insight.summary,
+      strengths: insight.strengths,
+      improvements: insight.improvements,
+      suitableRoles: insight.suitableRoles,
+      recommendation: insight.recommendation,
+      fullResponse: JSON.stringify(insight),
+      tone: config?.tone || "COACH",
+      objective: config?.objective || "EVALUATION",
     },
-    S: {
-      title: "Steadiness — Người hỗ trợ",
-      strengths: ["Kiên nhẫn và đáng tin cậy", "Lắng nghe tốt", "Tạo sự ổn định cho team", "Trung thành với tổ chức"],
-      improvements: ["Cần chủ động hơn trong việc thể hiện ý kiến", "Thích nghi nhanh hơn với thay đổi"],
-      roles: ["HR Manager", "Customer Success", "Operations Manager"],
-    },
-    C: {
-      title: "Conscientiousness — Người phân tích",
-      strengths: ["Phân tích sắc bén", "Chú ý đến chi tiết", "Đảm bảo chất lượng cao", "Tư duy hệ thống"],
-      improvements: ["Cần linh hoạt hơn khi cần quyết định nhanh", "Tránh quá cầu toàn"],
-      roles: ["Data Analyst", "QA Engineer", "Finance Controller"],
-    },
-  };
-
-  const profile = profileData[dominant];
-
-  return {
-    summary: `${userName} có profile ${profile.title} với ${dominant} chiếm ưu thế (${pct[dominant as keyof typeof pct]}%). Kết hợp với ${discDescriptions[secondary]?.split("—")[1]?.trim() || secondary}, tạo nên phong cách làm việc ${dominant === "D" ? "quyết đoán và hiệu quả" : dominant === "I" ? "năng động và kết nối" : dominant === "S" ? "ổn định và đáng tin cậy" : "cẩn thận và chất lượng"}.`,
-    personalityProfile: `Profile DISC chính: ${profile.title}. Chiều phụ: ${discDescriptions[secondary]?.split("—")[0]?.trim() || secondary}. Phong cách làm việc thiên về ${dominant === "D" ? "dẫn dắt, ra quyết định nhanh" : dominant === "I" ? "kết nối con người, truyền cảm hứng" : dominant === "S" ? "hỗ trợ, duy trì sự ổn định" : "phân tích, đảm bảo chất lượng"}.`,
-    numerologyInsight: "Cần cấu hình GROQ_API_KEY để nhận phân tích thần số học chi tiết từ AI.",
-    strengths: profile.strengths,
-    improvements: profile.improvements,
-    suitableRoles: profile.roles,
-    developmentPlan: [
-      `Phát triển kỹ năng ${sorted[sorted.length - 1][0]} trong 1-3 tháng tới`,
-      `Tham gia các dự án đòi hỏi ${dominant === "D" ? "teamwork" : dominant === "I" ? "phân tích chi tiết" : dominant === "S" ? "ra quyết định nhanh" : "giao tiếp nhóm"}`,
-      `Định hướng dài hạn: cân bằng profile DISC để trở thành nhân sự toàn diện`,
-    ],
-    recommendation: `Với profile ${dominant}${secondary}, ${userName} phù hợp nhất với các vai trò đòi hỏi ${dominant === "D" ? "khả năng lãnh đạo và ra quyết định" : dominant === "I" ? "giao tiếp và xây dựng quan hệ" : dominant === "S" ? "sự ổn định và hỗ trợ đồng đội" : "tư duy phân tích và đảm bảo chất lượng"}. Nên phát triển thêm kỹ năng từ chiều ${sorted[sorted.length - 1][0]} để cân bằng profile.`,
-  };
-}
-
-function generateLogicFallback(
-  scores: LogicScores,
-  userName: string,
-  questionCount: number,
-  maxScores: Record<string, number>,
-): InsightResult {
-  const correctCount = scores.correct || 0;
-  const reasoningScore = scores.reasoning || 0;
-  const totalQuestions = maxScores.correct || questionCount || 1;
-  const accuracy = Math.round((correctCount / totalQuestions) * 100);
-  const maxReasoning = maxScores.reasoning || 1;
-  const reasoningPct = Math.round((reasoningScore / maxReasoning) * 100);
-
-  let level: string;
-  let strengths: string[];
-  let improvements: string[];
-  let roles: string[];
-
-  if (accuracy >= 80) {
-    level = "xuất sắc";
-    strengths = [
-      "Tư duy logic sắc bén, phân tích nhanh",
-      "Khả năng suy luận trừu tượng mạnh",
-      "Giải quyết vấn đề phức tạp hiệu quả",
-      "Xử lý dữ liệu và con số chính xác",
-    ];
-    improvements = [
-      "Cần cân bằng giữa phân tích và hành động",
-      "Phát triển thêm kỹ năng giao tiếp để truyền đạt ý tưởng",
-    ];
-    roles = ["Data Analyst", "Software Engineer", "Strategy Consultant", "Finance Analyst"];
-  } else if (accuracy >= 60) {
-    level = "khá tốt";
-    strengths = [
-      "Nền tảng tư duy logic vững",
-      "Khả năng nhận diện pattern cơ bản",
-      "Xử lý được các bài toán trung bình",
-    ];
-    improvements = [
-      "Cần rèn luyện thêm tư duy trừu tượng",
-      "Tăng tốc độ phân tích và ra quyết định",
-      "Luyện tập với các bài toán logic phức tạp hơn",
-    ];
-    roles = ["Project Coordinator", "Business Analyst", "Operations Specialist"];
-  } else {
-    level = "cần phát triển thêm";
-    strengths = [
-      "Có tiềm năng phát triển tư duy logic",
-      "Kiên nhẫn hoàn thành bài test đầy đủ",
-    ];
-    improvements = [
-      "Cần luyện tập tư duy logic thường xuyên",
-      "Học cách chia nhỏ vấn đề phức tạp",
-      "Rèn kỹ năng phân tích dữ liệu cơ bản",
-      "Tập trung vào từng bước suy luận",
-    ];
-    roles = ["Customer Support", "Administrative Assistant", "Content Creator"];
-  }
-
-  return {
-    summary: `${userName} đạt ${correctCount}/${questionCount} câu đúng (${accuracy}%) trong bài Logic Test — mức ${level}. Điểm tư duy suy luận: ${reasoningPct}%.`,
-    personalityProfile: `Năng lực tư duy logic ở mức ${level}. Tỷ lệ chính xác ${accuracy}%, khả năng suy luận ${reasoningPct}%.`,
-    numerologyInsight: "Cần cấu hình GROQ_API_KEY để nhận phân tích thần số học chi tiết.",
-    strengths,
-    improvements,
-    suitableRoles: roles,
-    developmentPlan: [
-      accuracy >= 80 ? "Tham gia các dự án chiến lược đòi hỏi phân tích phức tạp" : "Luyện tập tư duy logic 15 phút mỗi ngày",
-      "Tham gia khóa đào tạo tư duy phân tích nâng cao",
-      "Áp dụng tư duy logic vào quyết định công việc hàng ngày",
-    ],
-    recommendation: accuracy >= 80
-      ? `${userName} có tư duy logic rất tốt, phù hợp với các vị trí đòi hỏi phân tích dữ liệu và giải quyết vấn đề phức tạp. Nên khai thác thế mạnh này trong các dự án chiến lược.`
-      : accuracy >= 60
-        ? `${userName} có nền tảng logic ổn. Nên tham gia các khóa đào tạo tư duy phân tích để nâng cao khả năng ra quyết định dựa trên dữ liệu.`
-        : `${userName} cần được hỗ trợ phát triển tư duy logic. Đề xuất tham gia chương trình đào tạo kỹ năng phân tích cơ bản và giải quyết vấn đề.`,
-  };
-}
-
-function generateSituationFallback(
-  scores: SituationScores,
-  userName: string,
-  maxScores: Record<string, number>,
-): InsightResult {
-  const dimensions = {
-    leadership: { label: "Lãnh đạo", score: scores.leadership || 0 },
-    teamwork: { label: "Đồng đội", score: scores.teamwork || 0 },
-    communication: { label: "Giao tiếp", score: scores.communication || 0 },
-    problemSolving: { label: "Giải quyết vấn đề", score: scores.problemSolving || 0 },
-  };
-
-  const totalScore = Object.values(dimensions).reduce((a, d) => a + d.score, 0) || 1;
-  const totalMax = Object.keys(dimensions).reduce((a, k) => a + (maxScores[k] || 1), 0) || 1;
-  const sorted = Object.entries(dimensions).sort((a, b) => b[1].score - a[1].score);
-  const strongest = sorted[0];
-  const weakest = sorted[sorted.length - 1];
-
-  const overallPct = Math.round((totalScore / totalMax) * 100);
-
-  const dimensionProfiles: Record<string, { strengths: string[]; roles: string[] }> = {
-    leadership: {
-      strengths: ["Khả năng dẫn dắt và ra quyết định trong tình huống khó", "Chủ động đề xuất giải pháp", "Dám chịu trách nhiệm"],
-      roles: ["Team Lead", "Project Manager", "Department Head"],
-    },
-    teamwork: {
-      strengths: ["Phối hợp tốt với đồng đội", "Biết cân bằng lợi ích cá nhân và nhóm", "Xây dựng niềm tin trong team"],
-      roles: ["Scrum Master", "HR Business Partner", "Customer Success Manager"],
-    },
-    communication: {
-      strengths: ["Giao tiếp hiệu quả trong tình huống phức tạp", "Biết lắng nghe và thuyết phục", "Xử lý xung đột khéo léo"],
-      roles: ["Account Manager", "Public Relations", "Business Development"],
-    },
-    problemSolving: {
-      strengths: ["Phân tích tình huống một cách có hệ thống", "Tìm giải pháp sáng tạo và thực tế", "Đánh giá rủi ro tốt"],
-      roles: ["Strategy Consultant", "Operations Manager", "Product Manager"],
-    },
-  };
-
-  const strongProfile = dimensionProfiles[strongest[0]];
-  const weakLabel = weakest[1].label;
-
-  return {
-    summary: `${userName} thể hiện năng lực xử lý tình huống ở mức ${overallPct >= 70 ? "tốt" : overallPct >= 50 ? "khá" : "cần phát triển"} (${overallPct}%). Điểm mạnh nhất: ${strongest[1].label} (${strongest[1].score} điểm). Cần cải thiện: ${weakLabel} (${weakest[1].score} điểm).`,
-    personalityProfile: `Năng lực xử lý tình huống: ${strongest[1].label} là thế mạnh nổi bật, ${weakLabel} cần được phát triển thêm.`,
-    numerologyInsight: "Cần cấu hình GROQ_API_KEY để nhận phân tích thần số học chi tiết.",
-    strengths: strongProfile.strengths,
-    developmentPlan: [
-      `Tập trung cải thiện ${weakLabel.toLowerCase()} trong 1-3 tháng`,
-      "Tham gia các buổi roleplay tình huống thực tế",
-      `Phát huy thế mạnh ${strongest[1].label.toLowerCase()} trong các dự án nhóm`,
-    ],
-    improvements: [
-      `Cần phát triển kỹ năng ${weakLabel.toLowerCase()}`,
-      `Rèn luyện thêm qua các tình huống thực tế`,
-      overallPct < 60 ? "Tham gia chương trình đào tạo kỹ năng mềm" : "Mentor hoặc coaching để nâng cao năng lực",
-    ],
-    suitableRoles: strongProfile.roles,
-    recommendation: `${userName} có thế mạnh về ${strongest[1].label.toLowerCase()}, phù hợp với vai trò cần ${strongest[0] === "leadership" ? "khả năng dẫn dắt" : strongest[0] === "teamwork" ? "tinh thần hợp tác" : strongest[0] === "communication" ? "kỹ năng giao tiếp" : "tư duy giải quyết vấn đề"}. Nên tập trung phát triển thêm ${weakLabel.toLowerCase()} để trở thành nhân sự toàn diện hơn.`,
-  };
+  });
 }

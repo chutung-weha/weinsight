@@ -2,8 +2,23 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { generateInsight } from "@/lib/ai/generate-insight";
+import { env } from "@/lib/env";
+import { generateAndSaveInsight, getInsightEligibility } from "@/lib/ai/generate-insight";
 import { checkRateLimit } from "@/lib/rate-limit";
+
+function isAllowedOrigin(req: Request) {
+  const origin = req.headers.get("origin");
+  if (!origin) return false;
+
+  try {
+    const requestUrl = new URL(req.url);
+    const originUrl = new URL(origin);
+    const allowedOrigins = new Set([requestUrl.origin, new URL(env.NEXTAUTH_URL).origin]);
+    return allowedOrigins.has(originUrl.origin);
+  } catch {
+    return false;
+  }
+}
 
 // GET — Fetch existing insight cho session
 export async function GET(
@@ -17,9 +32,8 @@ export async function GET(
 
   const { sessionId } = await params;
 
-  const insight = await prisma.aIInsight.findFirst({
+  const insight = await prisma.aIInsight.findUnique({
     where: { sessionId },
-    orderBy: { createdAt: "desc" },
     include: {
       session: {
         select: {
@@ -62,9 +76,7 @@ export async function POST(
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
   // CSRF: kiểm tra Origin header
-  const origin = req.headers.get("origin");
-  const host = req.headers.get("host");
-  if (origin && host && !origin.includes(host)) {
+  if (!isAllowedOrigin(req)) {
     return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
   }
 
@@ -87,6 +99,15 @@ export async function POST(
   // Verify session exists và user có quyền
   const testSession = await prisma.testSession.findUnique({
     where: { id: sessionId },
+    select: {
+      id: true,
+      userId: true,
+      status: true,
+      testType: true,
+      candidateName: true,
+      dateOfBirth: true,
+      occupation: true,
+    },
   });
 
   if (!testSession) {
@@ -103,33 +124,24 @@ export async function POST(
     return NextResponse.json({ success: false, error: "Phiên test chưa hoàn thành" }, { status: 400 });
   }
 
+  const eligibility = getInsightEligibility(testSession);
+  if (!eligibility.eligible) {
+    return NextResponse.json(
+      { success: false, error: eligibility.reason || "Phiên test không đủ điều kiện tạo AI Insight." },
+      { status: 400 }
+    );
+  }
+
   // Nếu đã có insight → trả lại luôn, không tạo mới (chống duplicate)
-  const existingInsight = await prisma.aIInsight.findFirst({
+  const existingInsight = await prisma.aIInsight.findUnique({
     where: { sessionId },
-    orderBy: { createdAt: "desc" },
   });
   if (existingInsight) {
     return NextResponse.json({ success: true, data: existingInsight });
   }
 
   try {
-    const { insight: result, config } = await generateInsight({ sessionId });
-
-    // Lưu vào DB
-    const insight = await prisma.aIInsight.create({
-      data: {
-        sessionId,
-        summary: result.summary,
-        strengths: result.strengths,
-        improvements: result.improvements,
-        suitableRoles: result.suitableRoles,
-        recommendation: result.recommendation,
-        fullResponse: JSON.stringify(result),
-        tone: config?.tone || "COACH",
-        objective: config?.objective || "EVALUATION",
-      },
-    });
-
+    const insight = await generateAndSaveInsight(sessionId);
     return NextResponse.json({ success: true, data: insight });
   } catch (error) {
     console.error("Insight generation error:", error);
