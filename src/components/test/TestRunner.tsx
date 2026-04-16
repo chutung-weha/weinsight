@@ -72,7 +72,8 @@ export function TestRunner({ theme, defaultCandidateName }: { theme: TestTheme; 
     async function init() {
       setLoading(true);
       try {
-        const res = await fetch(`/api/test/${theme.testType.toLowerCase()}/questions`, {
+        const qs = sessionId ? `?sessionId=${sessionId}` : "";
+        const res = await fetch(`/api/test/${theme.testType.toLowerCase()}/questions${qs}`, {
           signal: controller.signal,
         });
         const data = await res.json();

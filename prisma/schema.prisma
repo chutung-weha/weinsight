@@ -132,6 +132,9 @@ model TestSession {
   // SITUATION: { "leadership": 22, "teamwork": 18, ... }
   totalScores Json?
 
+  // IDs của câu hỏi được random chọn cho session này (dùng cho DISC 200 → 20)
+  selectedQuestionIds Json?
+
   user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   answers    TestAnswer[]
   aiInsight  AIInsight?

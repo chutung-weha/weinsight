@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 const validTestTypes = ["DISC", "LOGIC", "SITUATION"];
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ testType: string }> }
 ) {
   const session = await getServerSession(authOptions);
@@ -27,22 +27,72 @@ export async function GET(
     );
   }
 
-  const questions = await prisma.question.findMany({
-    where: {
-      testType: type as "DISC" | "LOGIC" | "SITUATION",
-      active: true,
-    },
-    select: {
-      id: true,
-      content: true,
-      order: true,
-      answers: {
-        orderBy: { order: "asc" },
-        select: { id: true, text: true, order: true },
+  // Nếu có sessionId query param → trả về đúng câu hỏi được chọn cho session đó
+  const url = new URL(req.url);
+  const sessionId = url.searchParams.get("sessionId");
+
+  let questionIds: string[] | null = null;
+  if (sessionId) {
+    const testSession = await prisma.testSession.findUnique({
+      where: { id: sessionId },
+      select: {
+        userId: true,
+        testType: true,
+        selectedQuestionIds: true,
       },
-    },
-    orderBy: { order: "asc" },
-  });
+    });
+    // Xác minh session thuộc user đang đăng nhập và đúng testType
+    if (
+      testSession &&
+      testSession.userId === session.user.id &&
+      testSession.testType === type
+    ) {
+      const stored = testSession.selectedQuestionIds as string[] | null;
+      if (stored && stored.length > 0) {
+        questionIds = stored;
+      }
+    }
+  }
+
+  let questions;
+  if (questionIds) {
+    // Trả về đúng 20 câu đã chọn cho session, giữ nguyên thứ tự random
+    const rows = await prisma.question.findMany({
+      where: {
+        id: { in: questionIds },
+        active: true,
+      },
+      select: {
+        id: true,
+        content: true,
+        order: true,
+        answers: {
+          orderBy: { order: "asc" },
+          select: { id: true, text: true, order: true },
+        },
+      },
+    });
+    // Sắp xếp theo thứ tự questionIds (thứ tự random đã lưu)
+    const idxMap = new Map(questionIds.map((id, i) => [id, i]));
+    questions = rows.sort((a, b) => (idxMap.get(a.id) ?? 0) - (idxMap.get(b.id) ?? 0));
+  } else {
+    questions = await prisma.question.findMany({
+      where: {
+        testType: type as "DISC" | "LOGIC" | "SITUATION",
+        active: true,
+      },
+      select: {
+        id: true,
+        content: true,
+        order: true,
+        answers: {
+          orderBy: { order: "asc" },
+          select: { id: true, text: true, order: true },
+        },
+      },
+      orderBy: { order: "asc" },
+    });
+  }
 
   if (questions.length === 0) {
     return NextResponse.json(

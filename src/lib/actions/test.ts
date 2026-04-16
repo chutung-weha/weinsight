@@ -13,6 +13,21 @@ import {
 import type { TestType } from "@prisma/client";
 import { generateAndSaveInsight, getInsightEligibility } from "@/lib/ai/generate-insight";
 
+// Số câu hỏi cần chọn cho mỗi session DISC
+const DISC_QUESTIONS_PER_SESSION = 20;
+
+/**
+ * Chọn ngẫu nhiên N phần tử từ mảng (Fisher-Yates shuffle)
+ */
+function sampleRandom<T>(arr: T[], n: number): T[] {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy.slice(0, n);
+}
+
 export async function startTest(data: StartTestInput) {
   const user = await getCurrentUser();
   if (!user) return { success: false as const, error: "Chưa đăng nhập" };
@@ -22,14 +37,12 @@ export async function startTest(data: StartTestInput) {
 
   const { testType } = parsed.data;
 
-  const activeQuestionCount = await prisma.question.count({
-    where: {
-      testType: testType as TestType,
-      active: true,
-    },
+  const activeQuestions = await prisma.question.findMany({
+    where: { testType: testType as TestType, active: true },
+    select: { id: true },
   });
 
-  if (activeQuestionCount === 0) {
+  if (activeQuestions.length === 0) {
     return { success: false as const, error: "Bài test này chưa sẵn sàng" };
   }
 
@@ -44,33 +57,25 @@ export async function startTest(data: StartTestInput) {
       candidateName: true,
       dateOfBirth: true,
       occupation: true,
+      selectedQuestionIds: true,
       answers: { select: { questionId: true } },
     },
   });
 
   if (existing) {
-    // Kiểm tra xem answers cũ có thuộc questions đang active không
-    // Nếu có answer thuộc question đã inactive → abandon session cũ, tạo mới
-    const activeQuestionIds = new Set(
-      (await prisma.question.findMany({
-        where: { testType: testType as TestType, active: true },
-        select: { id: true },
-      })).map((q) => q.id)
-    );
+    const activeQuestionIdSet = new Set(activeQuestions.map((q) => q.id));
 
     const hasStaleAnswers = existing.answers.some(
-      (answer) => !activeQuestionIds.has(answer.questionId)
+      (answer) => !activeQuestionIdSet.has(answer.questionId)
     );
 
     if (hasStaleAnswers) {
-      // Abandon session cũ
       await prisma.testSession.update({
         where: { id: existing.id },
         data: { status: "ABANDONED" },
       });
-      // Tiếp tục tạo session mới (fall through)
+      // fall through to create new session
     } else {
-      // Session vẫn hợp lệ → resume
       if (parsed.data.candidateName || parsed.data.dateOfBirth || parsed.data.occupation) {
         await prisma.testSession.update({
           where: { id: existing.id },
@@ -81,13 +86,25 @@ export async function startTest(data: StartTestInput) {
           },
         });
       }
+      const selectedIds = (existing.selectedQuestionIds as string[] | null) ?? null;
       return {
         success: true as const,
         sessionId: existing.id,
         answeredQuestionIds: existing.answers.map((answer) => answer.questionId),
+        selectedQuestionIds: selectedIds,
         hasPreTestInfo: !!(existing.candidateName || parsed.data.candidateName),
       };
     }
+  }
+
+  // Chọn ngẫu nhiên câu hỏi cho session mới (chỉ áp dụng với DISC có >= DISC_QUESTIONS_PER_SESSION câu)
+  let selectedQuestionIds: string[] | null = null;
+  if (
+    testType === "DISC" &&
+    activeQuestions.length > DISC_QUESTIONS_PER_SESSION
+  ) {
+    const allIds = activeQuestions.map((q) => q.id);
+    selectedQuestionIds = sampleRandom(allIds, DISC_QUESTIONS_PER_SESSION);
   }
 
   const session = await prisma.testSession.create({
@@ -97,6 +114,7 @@ export async function startTest(data: StartTestInput) {
       candidateName: parsed.data.candidateName,
       dateOfBirth: parsed.data.dateOfBirth ? new Date(parsed.data.dateOfBirth) : undefined,
       occupation: parsed.data.occupation,
+      selectedQuestionIds: selectedQuestionIds ?? undefined,
     },
   });
 
@@ -104,6 +122,7 @@ export async function startTest(data: StartTestInput) {
     success: true as const,
     sessionId: session.id,
     answeredQuestionIds: [] as string[],
+    selectedQuestionIds,
     hasPreTestInfo: !!parsed.data.candidateName,
   };
 }
@@ -190,6 +209,7 @@ export async function completeTest(data: CompleteTestInput) {
       candidateName: true,
       dateOfBirth: true,
       occupation: true,
+      selectedQuestionIds: true,
       answers: {
         select: {
           questionId: true,
@@ -207,16 +227,32 @@ export async function completeTest(data: CompleteTestInput) {
     return { success: false as const, error: "Phiên test đã kết thúc" };
   }
 
+  // Xác định danh sách câu hỏi cần trả lời:
+  // - Nếu session có selectedQuestionIds (DISC random) → dùng danh sách đó
+  // - Nếu không → dùng tất cả câu hỏi active của loại test
+  let requiredQuestionIds: Set<string>;
+  const storedSelected = session.selectedQuestionIds as string[] | null;
+  if (storedSelected && storedSelected.length > 0) {
+    requiredQuestionIds = new Set(storedSelected);
+  } else {
+    const activeQuestions = await prisma.question.findMany({
+      where: { testType: session.testType, active: true },
+      select: { id: true },
+    });
+    requiredQuestionIds = new Set(activeQuestions.map((q) => q.id));
+  }
+
+  // Lấy tất cả câu hỏi active để validate answers không bị stale
   const activeQuestions = await prisma.question.findMany({
     where: { testType: session.testType, active: true },
     select: { id: true },
   });
+  const activeQuestionIdSet = new Set(activeQuestions.map((q) => q.id));
 
-  const activeQuestionIds = new Set(activeQuestions.map((question) => question.id));
   const answeredQuestionIds = new Set(session.answers.map((answer) => answer.questionId));
 
   for (const answeredQuestionId of answeredQuestionIds) {
-    if (!activeQuestionIds.has(answeredQuestionId)) {
+    if (!activeQuestionIdSet.has(answeredQuestionId)) {
       return {
         success: false as const,
         error: "Phiên test có dữ liệu trả lời không hợp lệ",
@@ -224,11 +260,16 @@ export async function completeTest(data: CompleteTestInput) {
     }
   }
 
-  const totalQuestions = activeQuestions.length;
-  if (answeredQuestionIds.size < totalQuestions) {
+  const totalQuestions = requiredQuestionIds.size;
+  // Đếm số câu đã trả lời trong danh sách yêu cầu
+  const answeredRequired = session.answers.filter((a) =>
+    requiredQuestionIds.has(a.questionId)
+  ).length;
+
+  if (answeredRequired < totalQuestions) {
     return {
       success: false as const,
-      error: `Cần trả lời đủ ${totalQuestions} câu hỏi (đã trả lời ${answeredQuestionIds.size}/${totalQuestions})`,
+      error: `Cần trả lời đủ ${totalQuestions} câu hỏi (đã trả lời ${answeredRequired}/${totalQuestions})`,
     };
   }
 

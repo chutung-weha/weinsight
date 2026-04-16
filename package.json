@@ -11,6 +11,7 @@
     "db:check": "node scripts/check-db-connection.mjs",
     "db:migrate": "npx prisma migrate dev",
     "db:seed": "npx tsx prisma/seed.ts",
+    "db:seed-disc-200": "npx tsx scripts/seed-disc-200.ts",
     "db:reset": "npx prisma migrate reset",
     "db:studio": "npx prisma studio"
   },
