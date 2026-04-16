@@ -144,6 +144,7 @@ export async function submitAnswer(data: SubmitAnswerInput) {
         userId: true,
         status: true,
         testType: true,
+        selectedQuestionIds: true,
       },
     }),
     prisma.question.findUnique({
@@ -173,6 +174,12 @@ export async function submitAnswer(data: SubmitAnswerInput) {
 
   if (!question || !question.active || question.testType !== session.testType) {
     return { success: false as const, error: "Câu hỏi không hợp lệ" };
+  }
+
+  // Nếu session có selectedQuestionIds → validate câu hỏi nằm trong danh sách đã chọn
+  const selectedIds = session.selectedQuestionIds as string[] | null;
+  if (selectedIds && selectedIds.length > 0 && !selectedIds.includes(questionId)) {
+    return { success: false as const, error: "Câu hỏi không thuộc phiên test này" };
   }
 
   if (!answer || answer.questionId !== questionId) {
@@ -227,27 +234,26 @@ export async function completeTest(data: CompleteTestInput) {
     return { success: false as const, error: "Phiên test đã kết thúc" };
   }
 
-  // Xác định danh sách câu hỏi cần trả lời:
-  // - Nếu session có selectedQuestionIds (DISC random) → dùng danh sách đó
-  // - Nếu không → dùng tất cả câu hỏi active của loại test
-  let requiredQuestionIds: Set<string>;
-  const storedSelected = session.selectedQuestionIds as string[] | null;
-  if (storedSelected && storedSelected.length > 0) {
-    requiredQuestionIds = new Set(storedSelected);
-  } else {
-    const activeQuestions = await prisma.question.findMany({
-      where: { testType: session.testType, active: true },
-      select: { id: true },
-    });
-    requiredQuestionIds = new Set(activeQuestions.map((q) => q.id));
-  }
-
-  // Lấy tất cả câu hỏi active để validate answers không bị stale
+  // Lấy tất cả câu hỏi active để validate
   const activeQuestions = await prisma.question.findMany({
     where: { testType: session.testType, active: true },
     select: { id: true },
   });
   const activeQuestionIdSet = new Set(activeQuestions.map((q) => q.id));
+
+  // Xác định danh sách câu hỏi cần trả lời:
+  // - Nếu session có selectedQuestionIds (DISC random) → giao với active (phòng admin deactivate giữa chừng)
+  // - Nếu không → dùng tất cả câu hỏi active của loại test
+  let requiredQuestionIds: Set<string>;
+  const storedSelected = session.selectedQuestionIds as string[] | null;
+  if (storedSelected && storedSelected.length > 0) {
+    // Chỉ giữ lại những câu hỏi còn active (tránh block nếu admin deactivate)
+    requiredQuestionIds = new Set(
+      storedSelected.filter((id) => activeQuestionIdSet.has(id))
+    );
+  } else {
+    requiredQuestionIds = activeQuestionIdSet;
+  }
 
   const answeredQuestionIds = new Set(session.answers.map((answer) => answer.questionId));
 
@@ -273,8 +279,10 @@ export async function completeTest(data: CompleteTestInput) {
     };
   }
 
+  // Chỉ tính điểm từ câu hỏi trong danh sách yêu cầu
   const totalScores: Record<string, number> = {};
   for (const testAnswer of session.answers) {
+    if (!requiredQuestionIds.has(testAnswer.questionId)) continue;
     const scores = (testAnswer.answer.scores as Record<string, number>) || {};
     for (const [key, value] of Object.entries(scores)) {
       totalScores[key] = (totalScores[key] || 0) + value;
