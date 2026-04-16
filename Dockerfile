@@ -12,8 +12,6 @@ FROM node:20-bookworm-slim AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-# Prisma client generated in deps stage
-COPY --from=deps /app/src/generated ./src/generated
 COPY --from=deps /app/node_modules/.prisma ./node_modules/.prisma
 RUN npm run build
 
