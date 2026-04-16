@@ -141,10 +141,38 @@ export default function ResultPage() {
     return (
       <>
         <Header />
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="text-center">
-            <div className="w-12 h-12 rounded-full border-2 border-cyan-500 border-t-transparent animate-spin mx-auto mb-4" />
-            <div className="text-slate-400">Đang tải kết quả...</div>
+        <div className="min-h-screen flex items-center justify-center relative overflow-hidden">
+          <div className="bg-orb w-[400px] h-[400px] -top-20 -left-20 absolute" style={{ background: "radial-gradient(circle, rgba(6,182,212,0.07), transparent)" }} />
+          <div className="bg-orb w-[300px] h-[300px] -bottom-16 -right-16 absolute" style={{ background: "radial-gradient(circle, rgba(124,58,237,0.07), transparent)" }} />
+          <div className="relative z-10 flex flex-col items-center gap-6 text-center">
+            {/* Triple-ring */}
+            <div className="relative w-[140px] h-[140px] flex items-center justify-center">
+              <svg width={140} height={140} viewBox="0 0 140 140" className="absolute inset-0" style={{ animation: "orbit-cw 8s linear infinite" }}>
+                <circle cx={70} cy={70} r={62} fill="none" stroke="#06B6D4" strokeWidth={1.5} strokeDasharray="6 10" opacity={0.6} />
+                <circle cx={70} cy={8} r={2.5} fill="#06B6D4" opacity={0.9} />
+              </svg>
+              <svg width={104} height={104} viewBox="0 0 104 104" className="absolute" style={{ animation: "orbit-ccw 5s linear infinite" }}>
+                <circle cx={52} cy={52} r={44} fill="none" stroke="#7C3AED" strokeWidth={2} strokeDasharray="30 18" opacity={0.5} />
+                <circle cx={52} cy={8} r={2} fill="#7C3AED" opacity={0.9} />
+              </svg>
+              <svg width={68} height={68} viewBox="0 0 68 68" className="absolute" style={{ animation: "orbit-cw 3s linear infinite" }}>
+                <defs><linearGradient id="rLoadGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#14B8A6" /><stop offset="100%" stopColor="#06B6D4" /></linearGradient></defs>
+                <circle cx={34} cy={34} r={26} fill="none" stroke="url(#rLoadGrad)" strokeWidth={3} strokeDasharray="16 52" strokeLinecap="round" />
+              </svg>
+              <div className="relative z-10 text-xl text-cyan-300" style={{ animation: "pulse-glow 2s ease-in-out infinite" }}>✦</div>
+            </div>
+            <div className="space-y-2 min-w-[220px]">
+              {[
+                { text: "Đọc kết quả bài test...", delay: "0s", color: "text-cyan-400" },
+                { text: "Phân tích hồ sơ DISC...", delay: "1.5s", color: "text-violet-400" },
+                { text: "Tích hợp thần số học...", delay: "3s", color: "text-teal-400" },
+                { text: "Tổng hợp AI Insight...", delay: "4.5s", color: "text-amber-400" },
+              ].map(({ text, delay, color }) => (
+                <div key={text} className={`flex items-center gap-2 text-sm ${color}`} style={{ opacity: 0, animation: `fade-step 0.5s ${delay} both` }}>
+                  <span className="text-[9px] opacity-60">◆</span>{text}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </>
@@ -419,9 +447,20 @@ export default function ResultPage() {
               <div className="text-center py-8 text-slate-500">
                 {insightLoading ? (
                   <>
-                    <div className="w-10 h-10 rounded-full border-2 border-cyan-500 border-t-transparent animate-spin mx-auto mb-3" />
-                    <p>AI đang tổng hợp DISC + thần số học + nghề nghiệp...</p>
-                    <p className="text-xs mt-1">Có thể mất 10-20 giây</p>
+                    {/* Mini triple-ring for AI insight loading */}
+                    <div className="relative w-[80px] h-[80px] flex items-center justify-center mx-auto mb-4">
+                      <svg width={80} height={80} viewBox="0 0 80 80" className="absolute inset-0" style={{ animation: "orbit-cw 8s linear infinite" }}>
+                        <circle cx={40} cy={40} r={36} fill="none" stroke="#06B6D4" strokeWidth={1.5} strokeDasharray="5 8" opacity={0.6} />
+                        <circle cx={40} cy={4} r={2} fill="#06B6D4" opacity={0.9} />
+                      </svg>
+                      <svg width={58} height={58} viewBox="0 0 58 58" className="absolute" style={{ animation: "orbit-ccw 5s linear infinite" }}>
+                        <circle cx={29} cy={29} r={24} fill="none" stroke="#7C3AED" strokeWidth={1.5} strokeDasharray="18 14" opacity={0.5} />
+                        <circle cx={29} cy={5} r={1.5} fill="#7C3AED" opacity={0.9} />
+                      </svg>
+                      <div className="relative z-10 text-sm text-cyan-300" style={{ animation: "pulse-glow 2s ease-in-out infinite" }}>✦</div>
+                    </div>
+                    <p className="text-sm text-slate-400">AI đang tổng hợp DISC + thần số học + nghề nghiệp...</p>
+                    <p className="text-xs text-slate-600 mt-1">Có thể mất 10-20 giây</p>
                   </>
                 ) : (
                   <>
