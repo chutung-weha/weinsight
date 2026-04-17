@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/layout/Header";
 import { startTest, submitAnswer, completeTest } from "@/lib/actions/test";
@@ -59,6 +59,26 @@ export function TestRunner({ theme, defaultCandidateName }: { theme: TestTheme; 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+
+  // Lưu handle setTimeout của transition để clear khi unmount hoặc chuyển
+  // step → tránh setState on unmounted. Ref không trigger re-render.
+  const transitionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Ref giữ answeredMap mới nhất để callback trong setTimeout đọc đúng giá trị
+  // (không bị stale closure khi setAnsweredMap chưa flush).
+  const answeredMapRef = useRef<Record<string, string>>({});
+
+  useEffect(() => {
+    answeredMapRef.current = answeredMap;
+  }, [answeredMap]);
+
+  useEffect(() => {
+    return () => {
+      if (transitionTimeoutRef.current) {
+        clearTimeout(transitionTimeoutRef.current);
+        transitionTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   const thisYear = new Date().getFullYear();
   const YEARS = Array.from({ length: thisYear - 1900 + 1 }, (_, i) => thisYear - i);
@@ -157,7 +177,7 @@ export function TestRunner({ theme, defaultCandidateName }: { theme: TestTheme; 
     return (
       <>
         <Header />
-        <section className="relative min-h-[calc(100vh-60px)] flex items-center justify-center py-12 overflow-hidden">
+        <section className="relative min-h-[calc(100dvh-60px)] flex items-center justify-center py-12 overflow-hidden">
           <div
             className="bg-orb w-[500px] h-[500px] -top-32 -right-32 absolute"
             style={{ background: `radial-gradient(circle, ${theme.orbs[0]}, transparent)` }}
@@ -182,10 +202,11 @@ export function TestRunner({ theme, defaultCandidateName }: { theme: TestTheme; 
               <div className="space-y-5">
                 {/* Họ tên */}
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1.5">
+                  <label htmlFor="test-candidate-name" className="block text-sm font-medium text-slate-300 mb-1.5">
                     Họ và tên
                   </label>
                   <input
+                    id="test-candidate-name"
                     type="text"
                     value={candidateName}
                     onChange={(e) => setCandidateName(e.target.value)}
@@ -196,11 +217,12 @@ export function TestRunner({ theme, defaultCandidateName }: { theme: TestTheme; 
 
                 {/* Ngày sinh */}
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1.5">
+                  <span className="block text-sm font-medium text-slate-300 mb-1.5">
                     Ngày tháng năm sinh
-                  </label>
+                  </span>
                   <div className="grid grid-cols-3 gap-3">
                     <select
+                      aria-label="Ngày sinh"
                       value={day}
                       onChange={(e) => setDay(Number(e.target.value))}
                       className="px-3 py-3 rounded-xl bg-white/[0.05] border border-white/10 text-slate-200 focus:outline-none focus:border-cyan-500/40 transition-all"
@@ -211,6 +233,7 @@ export function TestRunner({ theme, defaultCandidateName }: { theme: TestTheme; 
                       ))}
                     </select>
                     <select
+                      aria-label="Tháng sinh"
                       value={month}
                       onChange={(e) => setMonth(Number(e.target.value))}
                       className="px-3 py-3 rounded-xl bg-white/[0.05] border border-white/10 text-slate-200 focus:outline-none focus:border-cyan-500/40 transition-all"
@@ -221,6 +244,7 @@ export function TestRunner({ theme, defaultCandidateName }: { theme: TestTheme; 
                       ))}
                     </select>
                     <select
+                      aria-label="Năm sinh"
                       value={year}
                       onChange={(e) => setYear(Number(e.target.value))}
                       className="px-3 py-3 rounded-xl bg-white/[0.05] border border-white/10 text-slate-200 focus:outline-none focus:border-cyan-500/40 transition-all"
@@ -235,10 +259,11 @@ export function TestRunner({ theme, defaultCandidateName }: { theme: TestTheme; 
 
                 {/* Nghề nghiệp */}
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1.5">
+                  <label htmlFor="test-occupation" className="block text-sm font-medium text-slate-300 mb-1.5">
                     Nghề nghiệp
                   </label>
                   <input
+                    id="test-occupation"
                     type="text"
                     value={occupation}
                     onChange={(e) => setOccupation(e.target.value)}
@@ -327,14 +352,20 @@ export function TestRunner({ theme, defaultCandidateName }: { theme: TestTheme; 
       return;
     }
 
-    setAnsweredMap((prev) => ({ ...prev, [question.id]: selected }));
+    // Cập nhật cả state và ref để transition callback đọc ngay được giá trị mới.
+    const nextAnsweredMap = { ...answeredMapRef.current, [question.id]: selected };
+    answeredMapRef.current = nextAnsweredMap;
+    setAnsweredMap(nextAnsweredMap);
 
     if (current < questions.length - 1) {
+      const nextQuestion = questions[current + 1];
+      const nextSelected = nextAnsweredMap[nextQuestion.id] ?? null;
       setIsTransitioning(true);
-      setTimeout(() => {
-        const nextQuestion = questions[current + 1];
+      if (transitionTimeoutRef.current) clearTimeout(transitionTimeoutRef.current);
+      transitionTimeoutRef.current = setTimeout(() => {
+        transitionTimeoutRef.current = null;
         setCurrent((c) => c + 1);
-        setSelected(answeredMap[nextQuestion.id] ?? null);
+        setSelected(nextSelected);
         setIsTransitioning(false);
         setSubmitting(false);
       }, 300);
@@ -351,11 +382,14 @@ export function TestRunner({ theme, defaultCandidateName }: { theme: TestTheme; 
 
   function handleBack() {
     if (current === 0 || submitting) return;
+    const prevQuestion = questions[current - 1];
+    const prevSelected = answeredMapRef.current[prevQuestion.id] ?? null;
     setIsTransitioning(true);
-    setTimeout(() => {
-      const prevQuestion = questions[current - 1];
+    if (transitionTimeoutRef.current) clearTimeout(transitionTimeoutRef.current);
+    transitionTimeoutRef.current = setTimeout(() => {
+      transitionTimeoutRef.current = null;
       setCurrent((c) => c - 1);
-      setSelected(answeredMap[prevQuestion.id] ?? null);
+      setSelected(prevSelected);
       setIsTransitioning(false);
     }, 300);
   }
@@ -363,7 +397,7 @@ export function TestRunner({ theme, defaultCandidateName }: { theme: TestTheme; 
   return (
     <>
       <Header />
-      <section className="relative min-h-[calc(100vh-60px)] flex items-center justify-center py-12 overflow-hidden">
+      <section className="relative min-h-[calc(100dvh-60px)] flex items-center justify-center py-12 overflow-hidden">
         <div
           className="bg-orb w-[500px] h-[500px] -top-32 -right-32 absolute"
           style={{ background: `radial-gradient(circle, ${theme.orbs[0]}, transparent)` }}
@@ -393,44 +427,77 @@ export function TestRunner({ theme, defaultCandidateName }: { theme: TestTheme; 
             <div className={`text-xs font-semibold uppercase tracking-wider mb-4 ${theme.labelColor}`}>
               {theme.questionLabel} {current + 1}
             </div>
-            <h2 className="text-lg sm:text-xl font-bold mb-8 leading-relaxed">
+            <h2 id={`question-${question.id}`} className="text-lg sm:text-xl font-bold mb-8 leading-relaxed">
               {question.content}
             </h2>
 
-            <div className="space-y-3">
-              {question.answers.map((answer) => (
-                <button
-                  key={answer.id}
-                  onClick={() => {
-                    setSelected(answer.id);
-                    setAnsweredMap((prev) => ({ ...prev, [question.id]: answer.id }));
-                  }}
-                  className={`w-full text-left p-4 rounded-xl border transition-all duration-300 ${
-                    selected === answer.id
-                      ? `${theme.selectedBg} ${theme.selectedBorder} shadow-lg ${theme.selectedShadow}`
-                      : "bg-white/[0.03] border-white/10 hover:bg-white/[0.06] hover:border-white/15"
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div
-                      className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 transition-all ${
-                        selected === answer.id
-                          ? `${theme.radioBorderActive} ${theme.radioBgActive}`
-                          : "border-slate-600"
-                      }`}
-                    >
-                      {selected === answer.id && (
-                        <svg className="w-3.5 h-3.5 text-[#0B1120]" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                        </svg>
-                      )}
+            <div
+              role="radiogroup"
+              aria-labelledby={`question-${question.id}`}
+              className="space-y-3"
+            >
+              {question.answers.map((answer) => {
+                const isSelected = selected === answer.id;
+                return (
+                  <button
+                    key={answer.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={isSelected}
+                    tabIndex={isSelected || (!selected && answer.order === 1) ? 0 : -1}
+                    onClick={() => {
+                      const next = { ...answeredMapRef.current, [question.id]: answer.id };
+                      answeredMapRef.current = next;
+                      setSelected(answer.id);
+                      setAnsweredMap(next);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "ArrowDown" || e.key === "ArrowRight") {
+                        e.preventDefault();
+                        const idx = question.answers.findIndex((a) => a.id === answer.id);
+                        const nextAnswer = question.answers[(idx + 1) % question.answers.length];
+                        const next = { ...answeredMapRef.current, [question.id]: nextAnswer.id };
+                        answeredMapRef.current = next;
+                        setSelected(nextAnswer.id);
+                        setAnsweredMap(next);
+                      } else if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
+                        e.preventDefault();
+                        const idx = question.answers.findIndex((a) => a.id === answer.id);
+                        const prevAnswer = question.answers[(idx - 1 + question.answers.length) % question.answers.length];
+                        const next = { ...answeredMapRef.current, [question.id]: prevAnswer.id };
+                        answeredMapRef.current = next;
+                        setSelected(prevAnswer.id);
+                        setAnsweredMap(next);
+                      }
+                    }}
+                    className={`w-full text-left p-4 rounded-xl border transition-all duration-300 ${
+                      isSelected
+                        ? `${theme.selectedBg} ${theme.selectedBorder} shadow-lg ${theme.selectedShadow}`
+                        : "bg-white/[0.03] border-white/10 hover:bg-white/[0.06] hover:border-white/15"
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div
+                        aria-hidden="true"
+                        className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 transition-all ${
+                          isSelected
+                            ? `${theme.radioBorderActive} ${theme.radioBgActive}`
+                            : "border-slate-600"
+                        }`}
+                      >
+                        {isSelected && (
+                          <svg className="w-3.5 h-3.5 text-[#0B1120]" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                        )}
+                      </div>
+                      <span className={`text-sm leading-relaxed ${isSelected ? "text-slate-200" : "text-slate-400"}`}>
+                        {answer.text}
+                      </span>
                     </div>
-                    <span className={`text-sm leading-relaxed ${selected === answer.id ? "text-slate-200" : "text-slate-400"}`}>
-                      {answer.text}
-                    </span>
-                  </div>
-                </button>
-              ))}
+                  </button>
+                );
+              })}
             </div>
 
             <div className="mt-8 flex items-center justify-between">

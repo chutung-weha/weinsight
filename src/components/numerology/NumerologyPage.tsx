@@ -98,7 +98,7 @@ export function NumerologyPage() {
       <Header />
 
       {phase === "form" && (
-        <section className="relative min-h-[calc(100vh-60px)] flex items-center justify-center py-12 overflow-hidden">
+        <section className="relative min-h-[calc(100dvh-60px)] flex items-center justify-center py-12 overflow-hidden">
           <div
             className="bg-orb w-[500px] h-[500px] -top-32 -right-32 absolute"
             style={{ background: "radial-gradient(circle, rgba(245,158,11,0.1), transparent)" }}
@@ -124,10 +124,11 @@ export function NumerologyPage() {
             <div className="glass p-8 sm:p-10">
               {/* Họ tên */}
               <div className="mb-5">
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                <label htmlFor="numerology-fullname" className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
                   Họ và tên khai sinh
                 </label>
                 <input
+                  id="numerology-fullname"
                   type="text"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
@@ -138,11 +139,12 @@ export function NumerologyPage() {
 
               {/* Ngày sinh */}
               <div className="mb-6">
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                <span className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
                   Ngày tháng năm sinh (dương lịch)
-                </label>
+                </span>
                 <div className="grid grid-cols-3 gap-3">
                   <select
+                    aria-label="Ngày sinh"
                     value={day}
                     onChange={(e) => setDay(Number(e.target.value))}
                     className="px-3 py-3 rounded-xl bg-white/[0.05] border border-white/10 text-slate-200 focus:outline-none focus:border-amber-500/30 transition-all"
@@ -151,6 +153,7 @@ export function NumerologyPage() {
                     {DAYS.map((d) => <option key={d} value={d}>{d}</option>)}
                   </select>
                   <select
+                    aria-label="Tháng sinh"
                     value={month}
                     onChange={(e) => setMonth(Number(e.target.value))}
                     className="px-3 py-3 rounded-xl bg-white/[0.05] border border-white/10 text-slate-200 focus:outline-none focus:border-amber-500/30 transition-all"
@@ -159,6 +162,7 @@ export function NumerologyPage() {
                     {MONTHS.map((m) => <option key={m} value={m}>Tháng {m}</option>)}
                   </select>
                   <select
+                    aria-label="Năm sinh"
                     value={year}
                     onChange={(e) => setYear(Number(e.target.value))}
                     className="px-3 py-3 rounded-xl bg-white/[0.05] border border-white/10 text-slate-200 focus:outline-none focus:border-amber-500/30 transition-all"

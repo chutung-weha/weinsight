@@ -124,17 +124,21 @@ export function Header() {
           </div>
 
           <button
+            type="button"
+            aria-label={menuOpen ? "Đóng menu" : "Mở menu"}
+            aria-expanded={menuOpen}
+            aria-controls="mobile-menu"
             className="md:hidden p-2 text-slate-400"
             onClick={() => setMenuOpen(!menuOpen)}
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <svg aria-hidden="true" className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
         </div>
 
         {menuOpen && (
-          <div className="md:hidden py-4 border-t border-white/10 space-y-3">
+          <div id="mobile-menu" className="md:hidden py-4 border-t border-white/10 space-y-3">
             {navItems.map((item) => (
               <Link
                 key={item.href}
