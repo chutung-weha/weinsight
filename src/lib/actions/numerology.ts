@@ -17,6 +17,9 @@ export async function saveNumerologyResult(data: NumerologyFormInput) {
   // Tính toán server-side (defense in depth)
   const result = calculateAll(fullName, day, month, year);
   const dob = new Date(Date.UTC(year, month - 1, day));
+  if (dob.getUTCFullYear() !== year || dob.getUTCMonth() !== month - 1 || dob.getUTCDate() !== day) {
+    return { success: false as const, error: "Ngày tháng năm sinh không hợp lệ" };
+  }
 
   // Check duplicate: cùng user + tên + ngày sinh trong 1 phút → trả session cũ
   const recent = await prisma.testSession.findFirst({

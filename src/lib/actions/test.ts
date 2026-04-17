@@ -194,7 +194,7 @@ export async function submitAnswer(data: SubmitAnswerInput) {
   }
 
   // Nếu session có selectedQuestionIds → validate câu hỏi nằm trong danh sách đã chọn
-  const selectedIds = session.selectedQuestionIds as string[] | null;
+  const selectedIds = parseSelectedQuestionIds(session.selectedQuestionIds);
   if (selectedIds && selectedIds.length > 0 && !selectedIds.includes(questionId)) {
     return { success: false as const, error: "Câu hỏi không thuộc phiên test này" };
   }
@@ -262,7 +262,7 @@ export async function completeTest(data: CompleteTestInput) {
   // - Nếu session có selectedQuestionIds (DISC random) → giao với active (phòng admin deactivate giữa chừng)
   // - Nếu không → dùng tất cả câu hỏi active của loại test
   let requiredQuestionIds: Set<string>;
-  const storedSelected = session.selectedQuestionIds as string[] | null;
+  const storedSelected = parseSelectedQuestionIds(session.selectedQuestionIds);
   if (storedSelected && storedSelected.length > 0) {
     // Chỉ giữ lại những câu hỏi còn active (tránh block nếu admin deactivate)
     requiredQuestionIds = new Set(

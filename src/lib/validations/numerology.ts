@@ -4,9 +4,12 @@ export const numerologyInputSchema = z
   .object({
     fullName: z
       .string()
+      .trim()
       .min(2, "Vui lòng nhập họ tên đầy đủ")
       .max(100, "Họ tên quá dài")
-      .regex(/^[\p{L}\s]+$/u, "Họ tên chỉ chứa chữ cái và khoảng trắng"),
+      .regex(/^[\p{L}\s]+$/u, "Họ tên chỉ chứa chữ cái và khoảng trắng")
+      .refine((val) => val.trim().length >= 2, "Vui lòng nhập họ tên đầy đủ")
+      .transform((val) => val.replace(/\s+/g, " ").trim()),
     day: z.number().int().min(1, "Ngày không hợp lệ").max(31, "Ngày không hợp lệ"),
     month: z.number().int().min(1, "Tháng không hợp lệ").max(12, "Tháng không hợp lệ"),
     year: z.number().int().min(1900, "Năm không hợp lệ").max(new Date().getFullYear(), "Năm không hợp lệ"),
