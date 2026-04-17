@@ -438,7 +438,11 @@ export function TestRunner({ theme, defaultCandidateName }: { theme: TestTheme; 
                 <button
                   onClick={handleBack}
                   disabled={submitting}
-                  className="flex items-center gap-1.5 px-5 py-3 rounded-full text-sm font-medium text-slate-400 hover:text-slate-200 bg-white/[0.03] border border-white/10 hover:bg-white/[0.06] transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed"
+                  className={`flex items-center gap-1.5 px-5 py-3 rounded-full text-sm font-semibold transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed ${
+                    !submitting
+                      ? `${theme.buttonClass} hover:-translate-y-0.5`
+                      : "bg-white/5 text-slate-600"
+                  }`}
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
