@@ -39,6 +39,9 @@
   "exclude": [
     "node_modules",
     "prisma.config.ts",
-    "prisma/seed.ts"
+    "prisma/seed.ts",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "vitest.config.ts"
   ]
 }
