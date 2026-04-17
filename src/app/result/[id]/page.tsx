@@ -37,6 +37,25 @@ const testThemes: Record<string, {
   labels: Record<string, string>;
   ringGradient: [string, string];
 }> = {
+  NUMEROLOGY: {
+    gradients: {
+      lifePath: "from-amber-500 to-amber-300",
+      attitude: "from-violet-500 to-violet-300",
+      naturalAbility: "from-teal-500 to-teal-300",
+      expression: "from-cyan-500 to-cyan-300",
+      soulUrge: "from-rose-500 to-rose-300",
+      personality: "from-blue-500 to-blue-300",
+    },
+    labels: {
+      lifePath: "Số chủ đạo",
+      attitude: "Chỉ số thái độ",
+      naturalAbility: "Năng lực tự nhiên",
+      expression: "Chỉ số sứ mệnh",
+      soulUrge: "Chỉ số linh hồn",
+      personality: "Chỉ số nhân cách",
+    },
+    ringGradient: ["#F59E0B", "#7C3AED"],
+  },
   DISC: {
     gradients: {
       D: "from-cyan-500 to-cyan-300",
@@ -197,6 +216,7 @@ export default function ResultPage() {
   const maxScores = data.maxScores || {};
   const theme = testThemes[data.testType] || testThemes.DISC;
   const isDISC = data.testType === "DISC";
+  const isNumerology = data.testType === "NUMEROLOGY";
   const pct: Record<string, number> = {};
 
   if (isDISC) {
@@ -205,9 +225,15 @@ export default function ResultPage() {
     for (const [k, v] of Object.entries(scores)) {
       pct[k] = Math.round((v / total) * 100);
     }
+  } else if (isNumerology) {
+    // Numerology: số tuyệt đối 1-9 hoặc master number 11/22 — normalize cho bar width
+    const NUMEROLOGY_KEY_ORDER = ["lifePath", "attitude", "naturalAbility", "expression", "soulUrge", "personality"];
+    for (const k of NUMEROLOGY_KEY_ORDER) {
+      const v = (scores as Record<string, number>)[k];
+      if (v !== undefined) pct[k] = Math.round((v / 22) * 100);
+    }
   } else {
     // Logic + Situation: điểm năng lực tuyệt đối (score / maxPossible)
-    // maxScores từ API — computed từ actual DB data, không hardcode
     for (const [k, v] of Object.entries(scores)) {
       const max = maxScores[k] || 1;
       pct[k] = Math.round((v / max) * 100);
@@ -291,7 +317,6 @@ export default function ResultPage() {
                 <div className="relative w-[140px] h-[140px] flex items-center justify-center">
                   <svg width={140} height={140} viewBox="0 0 120 120" className="absolute inset-0">
                     <circle cx={60} cy={60} r={50} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={8} />
-                    {/* 4 arcs cho 4 DISC dimensions — mỗi arc tỷ lệ với % */}
                     {(() => {
                       const order = ["D", "I", "S", "C"];
                       const colors = ["#06B6D4", "#8B5CF6", "#3B82F6", "#14B8A6"];
@@ -323,6 +348,28 @@ export default function ResultPage() {
                     <div className="text-[10px] text-slate-400 mt-0.5">Thiên hướng</div>
                   </div>
                 </div>
+              ) : isNumerology ? (
+                /* Numerology: hiển thị số chủ đạo ở trung tâm */
+                <div className="relative w-[140px] h-[140px] flex items-center justify-center">
+                  <svg width={140} height={140} viewBox="0 0 120 120" className="absolute inset-0" style={{ animation: "orbit-cw 20s linear infinite" }}>
+                    <defs>
+                      <linearGradient id="numRingGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stopColor="#F59E0B" />
+                        <stop offset="100%" stopColor="#7C3AED" />
+                      </linearGradient>
+                    </defs>
+                    <circle cx={60} cy={60} r={50} fill="none" stroke="url(#numRingGrad)" strokeWidth={2} strokeDasharray="4 8" opacity={0.6} />
+                  </svg>
+                  <svg width={104} height={104} viewBox="0 0 104 104" className="absolute" style={{ animation: "orbit-ccw 12s linear infinite" }}>
+                    <circle cx={52} cy={52} r={44} fill="none" stroke="#7C3AED" strokeWidth={1.5} strokeDasharray="20 16" opacity={0.4} />
+                  </svg>
+                  <div className="relative z-10 text-center">
+                    <div className="text-4xl font-extrabold" style={{ background: "linear-gradient(135deg, #F59E0B, #7C3AED)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+                      {(scores as Record<string, number>).lifePath ?? "—"}
+                    </div>
+                    <div className="text-[10px] text-amber-400/70 mt-0.5">Số chủ đạo</div>
+                  </div>
+                </div>
               ) : (
                 <svg width={140} height={140} viewBox="0 0 120 120">
                   <circle cx={60} cy={60} r={50} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={8} />
@@ -336,12 +383,21 @@ export default function ResultPage() {
             {isDISC && discProfile.label && (
               <div className="text-xs text-slate-400 mb-4 -mt-2">{discProfile.label}</div>
             )}
+            {isNumerology && (
+              <div className="text-xs text-amber-400/70 mb-4 -mt-2">Thần số học Pythagoras</div>
+            )}
             <div className="space-y-3.5">
               {Object.entries(pct).map(([key, value]) => (
                 <div key={key}>
                   <div className="flex justify-between text-xs mb-1.5">
                     <span className="text-slate-400">{theme.labels[key] || key}</span>
-                    <span className="font-semibold">{!isDISC && key === "correct" ? `${scores.correct || 0}/${maxScores.correct || "?"}` : `${value}%`}</span>
+                    <span className="font-semibold">
+                      {isNumerology
+                        ? (scores as Record<string, number>)[key] ?? value
+                        : !isDISC && key === "correct"
+                          ? `${scores.correct || 0}/${maxScores.correct || "?"}`
+                          : `${value}%`}
+                    </span>
                   </div>
                   <div className="bar-track">
                     <div

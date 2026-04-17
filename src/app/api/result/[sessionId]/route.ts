@@ -137,9 +137,9 @@ export async function GET(
       aiInsightReason: insightEligibility.reason,
       completedAt: testSession.completedAt,
       answers: testSession.answers.map((a) => ({
-        question: a.question.content,
-        answer: a.answer.text,
-        order: a.question.order,
+        question: a.question?.content ?? "",
+        answer: a.answer?.text ?? "",
+        order: a.question?.order ?? 0,
       })),
       aiInsight: testSession.aiInsight
         ? (() => {
