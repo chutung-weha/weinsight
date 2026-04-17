@@ -54,6 +54,7 @@ export function TestRunner({ theme, defaultCandidateName }: { theme: TestTheme; 
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [current, setCurrent] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
+  const [answeredMap, setAnsweredMap] = useState<Record<string, string>>({});
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -326,11 +327,14 @@ export function TestRunner({ theme, defaultCandidateName }: { theme: TestTheme; 
       return;
     }
 
+    setAnsweredMap((prev) => ({ ...prev, [question.id]: selected }));
+
     if (current < questions.length - 1) {
       setIsTransitioning(true);
       setTimeout(() => {
+        const nextQuestion = questions[current + 1];
         setCurrent((c) => c + 1);
-        setSelected(null);
+        setSelected(answeredMap[nextQuestion.id] ?? null);
         setIsTransitioning(false);
         setSubmitting(false);
       }, 300);
@@ -343,6 +347,17 @@ export function TestRunner({ theme, defaultCandidateName }: { theme: TestTheme; 
         setSubmitting(false);
       }
     }
+  }
+
+  function handleBack() {
+    if (current === 0 || submitting) return;
+    setIsTransitioning(true);
+    setTimeout(() => {
+      const prevQuestion = questions[current - 1];
+      setCurrent((c) => c - 1);
+      setSelected(answeredMap[prevQuestion.id] ?? null);
+      setIsTransitioning(false);
+    }, 300);
   }
 
   return (
@@ -386,7 +401,10 @@ export function TestRunner({ theme, defaultCandidateName }: { theme: TestTheme; 
               {question.answers.map((answer) => (
                 <button
                   key={answer.id}
-                  onClick={() => setSelected(answer.id)}
+                  onClick={() => {
+                    setSelected(answer.id);
+                    setAnsweredMap((prev) => ({ ...prev, [question.id]: answer.id }));
+                  }}
                   className={`w-full text-left p-4 rounded-xl border transition-all duration-300 ${
                     selected === answer.id
                       ? `${theme.selectedBg} ${theme.selectedBorder} shadow-lg ${theme.selectedShadow}`
@@ -415,7 +433,22 @@ export function TestRunner({ theme, defaultCandidateName }: { theme: TestTheme; 
               ))}
             </div>
 
-            <div className="mt-8 flex justify-end">
+            <div className="mt-8 flex items-center justify-between">
+              {current > 0 ? (
+                <button
+                  onClick={handleBack}
+                  disabled={submitting}
+                  className="flex items-center gap-1.5 px-5 py-3 rounded-full text-sm font-medium text-slate-400 hover:text-slate-200 bg-white/[0.03] border border-white/10 hover:bg-white/[0.06] transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+                  </svg>
+                  Câu trước
+                </button>
+              ) : (
+                <div />
+              )}
+
               <button
                 onClick={handleNext}
                 disabled={!selected || submitting}
