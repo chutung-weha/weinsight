@@ -8,7 +8,7 @@ export const metadata: Metadata = {
     "Nền tảng đánh giá nhân sự thông minh của WEHA GROUP. DISC, Logic, Situation test + AI Insight.",
   icons: {
     icon: [
-      { url: "/icon.png", sizes: "64x64", type: "image/png" },
+      { url: "/icon.png", sizes: "128x128", type: "image/png" },
       { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
     ],
     apple: { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
