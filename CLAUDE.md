@@ -19,7 +19,8 @@ Nền tảng đánh giá nhân sự của WEHA Group. User làm test (DISC, Logi
 - Prisma schema hiện có 8 models: `User`, `Question`, `Answer`, `TestSession`, `TestAnswer`, `AIInsight`, `KnowledgeDoc`, `AIConfig`
 - `TestType` gồm `DISC`, `LOGIC`, `SITUATION`, `NUMEROLOGY`
 - `AIInsight` đã được chuyển sang quan hệ **1 session = 1 insight** (`sessionId @unique`)
-- Migration `20260416100310_make_ai_insight_singleton_per_session` đã được apply vào DB thật và đã có record trong `_prisma_migrations`
+- Migration `20260416100310_make_ai_insight_singleton_per_session` đã apply + commit vào repo
+- Migration `20260416120000_add_selected_question_ids` đã apply + commit — thêm `selectedQuestionIds Json?` vào `TestSession`
 - `npx prisma generate` hoạt động bình thường với schema hiện tại
 
 ### 2. Authentication (NextAuth + Google OAuth)
@@ -37,13 +38,17 @@ Nền tảng đánh giá nhân sự của WEHA Group. User làm test (DISC, Logi
 - Phát hiện stale session khi question bank thay đổi
 - `completeTest()` dùng atomic update để chống double-submit
 - `computeScoreMeta()` lấy max score động từ DB
+- **Nút Back**: user có thể quay lại câu trước, đáp án cũ được phục hồi từ `answeredMap` state
+- **DISC random 20 câu**: mỗi session bốc ngẫu nhiên 20 câu từ bank 200 câu (5 câu/hạng mục D/I/S/C), lưu vào `selectedQuestionIds`
+- `parseSelectedQuestionIds()` helper đảm bảo type-safe khi đọc JSON field từ Prisma
 
 ### 4. Thần số học Pythagoras
 - **Status**: ✅ Hoàn thành
 - Route riêng `/than-so-hoc`
-- 6 chỉ số numerology hoạt động đúng
-- Save numerology result đã chuẩn hóa `dateOfBirth` theo `Date` thay vì string thô
+- 6 chỉ số numerology hoạt động đúng (lifePath, attitude, naturalAbility, expression, soulUrge, personality)
+- Save numerology result đã chuẩn hóa `dateOfBirth` theo `Date.UTC` + validation ngày hợp lệ
 - Có dedup tránh tạo session numerology trùng trong thời gian ngắn
+- Tên được normalize whitespace + minimum 2 chars sau trim
 
 ### 5. AI Insight
 - **Status**: ✅ Hoàn thành theo scope mới
@@ -66,6 +71,8 @@ Nền tảng đánh giá nhân sự của WEHA Group. User làm test (DISC, Logi
   - `aiInsightReason`
 - Client chỉ auto-generate insight khi session đủ điều kiện
 - UI thông báo rõ vì sao chưa generate insight thay vì retry mù
+- **NUMEROLOGY result**: hiển thị đúng 6 chỉ số với labels tiếng Việt, bar width normalize `/22 * 100`, ring hiển thị số chủ đạo
+- Null-safe guard cho `a.question?.content`, `a.answer?.text`, `a.question?.order` trong API route
 
 ### 7. Build / Runtime / Tooling
 - **Status**: ✅ Ổn định
@@ -84,21 +91,30 @@ Nền tảng đánh giá nhân sự của WEHA Group. User làm test (DISC, Logi
 - `prisma.config.ts` đã ưu tiên nạp `.env.local`
 - `psql`, `npm run db:check`, `prisma generate`, và `prisma migrate status` ngoài sandbox đều hoạt động
 
+### 9. Favicon / Brand Identity
+- **Status**: ✅ Hoàn thành
+- `src/app/icon.png` (32×32) và `src/app/icon-192.png` (192×192) dùng logo WEHA đầy đủ (2 vòng tròn chồng nhau)
+- Logo fit trong khung vuông với transparent padding — icon nhỏ gọn trên tab browser
+- Nguồn: `public/weha-logo.png` (423×260) → sharp `resize fit:contain` + `extend` để thêm padding
+- `src/app/layout.tsx` khai báo explicit `icons` metadata
+
 ## Trạng thái hiện tại
 
 | Phần | Status | Ghi chú |
 |------|--------|---------|
 | Prisma schema | ✅ Done | Schema hiện khớp DB thật |
-| Prisma migrations | ✅ Done | Migration singleton insight đã apply |
+| Prisma migrations | ✅ Done | Cả 2 migration quan trọng đã apply + commit |
 | Prisma CLI | ✅ Done | Hoạt động khi có network thực; trong sandbox có thể fail vì bị chặn mạng |
 | Supabase connection | ✅ Done | `DATABASE_URL` = pooler, `DIRECT_URL` = direct DB |
 | Google OAuth | ✅ Done | Runtime-ready, không làm fail build nữa |
-| DISC flow | ✅ Done | Hoàn chỉnh |
-| Logic flow | ✅ Done | Hoàn chỉnh |
-| Situation flow | ✅ Done | Hoàn chỉnh |
-| Numerology | ✅ Done | Hoàn chỉnh |
+| DISC flow | ✅ Done | 200 câu seeded, random 20/session (5/hạng mục), nút Back |
+| Logic flow | ✅ Done | Câu hỏi chưa có trong DB; flow hoạt động nếu seed |
+| Situation flow | ✅ Done | Câu hỏi chưa có trong DB; flow hoạt động nếu seed |
+| Numerology | ✅ Done | Hoàn chỉnh, result page hiển thị đúng 6 chỉ số |
 | AI insight tổng hợp | ✅ Done | Chỉ cho DISC + numerology + nghề nghiệp |
 | AI insight cho Logic/Situation | ⛔ Intentionally disabled | Không đủ dữ liệu cho “đánh giá tổng thể” theo scope mới |
+| Result page NUMEROLOGY | ✅ Done | Theme, labels, bar width, ring đều đúng |
+| Favicon / Brand | ✅ Done | Logo WEHA đầy đủ 2 vòng tròn, padded, tab browser nhỏ gọn |
 | Admin dashboard | ⚠️ Placeholder | Chỉ có stats page |
 | Knowledge upload / RAG | ❌ Chưa làm | Schema có nhưng flow chưa có |
 | `/ho-so` | ❌ Chưa làm | Route protected có trong middleware nhưng chưa có page |
@@ -166,6 +182,11 @@ Nền tảng đánh giá nhân sự của WEHA Group. User làm test (DISC, Logi
 | **Password trong URL phải encode** | Password có `@` là hợp lệ, nhưng khi đưa vào URI phải encode (`%40`) để parser không cắt sai phần host/userinfo. |
 | **Thêm `db:check` script** | Có một lệnh dùng đúng Prisma Client của app sẽ giúp phân biệt nhanh lỗi env, lỗi DB, và lỗi Prisma CLI/sandbox. |
 | **Prisma ưu tiên `.env.local`** | Tránh Prisma CLI vô tình đọc `.env` local Postgres khi app runtime đang chạy bằng Supabase trong `.env.local`. |
+| **DISC random 5 câu/hạng mục** | Bốc đều 5 câu mỗi D/I/S/C (tổng 20) thay vì random 20 bất kỳ, đảm bảo test đo đúng cả 4 chiều tính cách. |
+| **`parseSelectedQuestionIds()` thay vì `as string[]`** | Prisma JSON field trả về `JsonValue`, TypeScript cast không có runtime guarantee. Helper parse + validate tránh crash khi data không đúng format. |
+| **Numerology bar width = value/22 * 100** | Chỉ số numerology là số tuyệt đối (1-9, 11, 22), không phải %. Normalize bằng max master number 22 để bar hiển thị proportional. |
+| **Favicon dùng sharp `fit:contain` + transparent padding** | Logo WEHA là hình chữ nhật ngang (423×260). `fit:contain` giữ aspect ratio, `extend` thêm padding đều 4 phía tạo khung vuông — icon nhỏ gọn, không bị crop, nhìn cân đối trên tab. |
+| **`answeredMap` state trong TestRunner** | Lưu `questionId → answerId` client-side để phục hồi đáp án khi Back. Không cần API call vì đáp án đã được upsert khi Next. Đơn giản hơn refetch. |
 
 ## Rules
 
