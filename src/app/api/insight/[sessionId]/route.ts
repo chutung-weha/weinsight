@@ -6,6 +6,12 @@ import { env } from "@/lib/env";
 import { generateAndSaveInsight, getInsightEligibility } from "@/lib/ai/generate-insight";
 import { checkRateLimit } from "@/lib/rate-limit";
 
+// Insight chứa nội dung đánh giá nhân sự — PII. Không cho browser/proxy cache.
+const NO_STORE_HEADERS = {
+  "Cache-Control": "private, no-store, no-cache, must-revalidate",
+  "Pragma": "no-cache",
+} as const;
+
 function isAllowedOrigin(req: Request) {
   const origin = req.headers.get("origin");
   if (!origin) return false;
@@ -26,8 +32,11 @@ export async function GET(
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
   const authSession = await getServerSession(authOptions);
-  if (!authSession?.user) {
-    return NextResponse.json({ success: false, error: "Chưa đăng nhập" }, { status: 401 });
+  if (!authSession?.user?.id) {
+    return NextResponse.json(
+      { success: false, error: "Chưa đăng nhập" },
+      { status: 401, headers: NO_STORE_HEADERS }
+    );
   }
 
   const { sessionId } = await params;
@@ -44,13 +53,19 @@ export async function GET(
   });
 
   if (!insight) {
-    return NextResponse.json({ success: false, error: "Chưa có AI Insight" }, { status: 404 });
+    return NextResponse.json(
+      { success: false, error: "Chưa có AI Insight" },
+      { status: 404, headers: NO_STORE_HEADERS }
+    );
   }
 
   const isOwner = insight.session.userId === authSession.user.id;
   const isAdmin = authSession.user.role === "ADMIN" || authSession.user.role === "HR";
   if (!isOwner && !isAdmin) {
-    return NextResponse.json({ success: false, error: "Không có quyền" }, { status: 403 });
+    return NextResponse.json(
+      { success: false, error: "Không có quyền" },
+      { status: 403, headers: NO_STORE_HEADERS }
+    );
   }
 
   return NextResponse.json({
@@ -67,7 +82,7 @@ export async function GET(
       objective: insight.objective,
       createdAt: insight.createdAt,
     },
-  });
+  }, { headers: NO_STORE_HEADERS });
 }
 
 // POST — Generate new insight cho session
@@ -77,12 +92,18 @@ export async function POST(
 ) {
   // CSRF: kiểm tra Origin header
   if (!isAllowedOrigin(req)) {
-    return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+    return NextResponse.json(
+      { success: false, error: "Forbidden" },
+      { status: 403, headers: NO_STORE_HEADERS }
+    );
   }
 
   const authSession = await getServerSession(authOptions);
-  if (!authSession?.user) {
-    return NextResponse.json({ success: false, error: "Chưa đăng nhập" }, { status: 401 });
+  if (!authSession?.user?.id) {
+    return NextResponse.json(
+      { success: false, error: "Chưa đăng nhập" },
+      { status: 401, headers: NO_STORE_HEADERS }
+    );
   }
 
   const { sessionId } = await params;
@@ -92,7 +113,13 @@ export async function POST(
   if (!rl.allowed) {
     return NextResponse.json(
       { success: false, error: `Quá nhiều yêu cầu. Vui lòng thử lại sau ${Math.ceil(rl.retryAfterMs / 1000)} giây.` },
-      { status: 429, headers: { "Retry-After": String(Math.ceil(rl.retryAfterMs / 1000)) } }
+      {
+        status: 429,
+        headers: {
+          ...NO_STORE_HEADERS,
+          "Retry-After": String(Math.ceil(rl.retryAfterMs / 1000)),
+        },
+      }
     );
   }
 
@@ -111,24 +138,33 @@ export async function POST(
   });
 
   if (!testSession) {
-    return NextResponse.json({ success: false, error: "Không tìm thấy phiên test" }, { status: 404 });
+    return NextResponse.json(
+      { success: false, error: "Không tìm thấy phiên test" },
+      { status: 404, headers: NO_STORE_HEADERS }
+    );
   }
 
   const isOwner = testSession.userId === authSession.user.id;
   const isAdmin = authSession.user.role === "ADMIN" || authSession.user.role === "HR";
   if (!isOwner && !isAdmin) {
-    return NextResponse.json({ success: false, error: "Không có quyền" }, { status: 403 });
+    return NextResponse.json(
+      { success: false, error: "Không có quyền" },
+      { status: 403, headers: NO_STORE_HEADERS }
+    );
   }
 
   if (testSession.status !== "COMPLETED") {
-    return NextResponse.json({ success: false, error: "Phiên test chưa hoàn thành" }, { status: 400 });
+    return NextResponse.json(
+      { success: false, error: "Phiên test chưa hoàn thành" },
+      { status: 400, headers: NO_STORE_HEADERS }
+    );
   }
 
   const eligibility = getInsightEligibility(testSession);
   if (!eligibility.eligible) {
     return NextResponse.json(
       { success: false, error: eligibility.reason || "Phiên test không đủ điều kiện tạo AI Insight." },
-      { status: 400 }
+      { status: 400, headers: NO_STORE_HEADERS }
     );
   }
 
@@ -137,17 +173,23 @@ export async function POST(
     where: { sessionId },
   });
   if (existingInsight) {
-    return NextResponse.json({ success: true, data: existingInsight });
+    return NextResponse.json(
+      { success: true, data: existingInsight },
+      { headers: NO_STORE_HEADERS }
+    );
   }
 
   try {
     const insight = await generateAndSaveInsight(sessionId);
-    return NextResponse.json({ success: true, data: insight });
+    return NextResponse.json(
+      { success: true, data: insight },
+      { headers: NO_STORE_HEADERS }
+    );
   } catch (error) {
     console.error("Insight generation error:", error);
     return NextResponse.json(
       { success: false, error: "Không thể tạo AI Insight. Vui lòng thử lại." },
-      { status: 500 }
+      { status: 500, headers: NO_STORE_HEADERS }
     );
   }
 }

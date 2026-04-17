@@ -29,7 +29,7 @@ Nền tảng đánh giá nhân sự của WEHA Group. User làm test (DISC, Logi
 - JWT session, sync role/active mỗi 1 phút
 - Disabled user bị vô hiệu hóa ngay qua `token.disabled`
 - `callbackUrl` đã được sanitize để chặn open redirect
-- Build không còn fail chỉ vì thiếu Google OAuth env; auth provider chỉ bật khi đủ `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET`
+- `env.ts` để `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` ở dạng optional (fallback `""`). `auth.ts` kiểm tra `googleEnabled` trước khi push GoogleProvider — nếu thiếu env, providers = [], module load không throw, các route khác vẫn chạy.
 
 ### 3. Test Flow (DISC / Logic / Situation)
 - **Status**: ✅ Hoàn thành
@@ -39,7 +39,7 @@ Nền tảng đánh giá nhân sự của WEHA Group. User làm test (DISC, Logi
 - `completeTest()` dùng atomic update để chống double-submit
 - `computeScoreMeta()` lấy max score động từ DB
 - **Nút Back**: user có thể quay lại câu trước, đáp án cũ được phục hồi từ `answeredMap` state
-- **DISC random 20 câu**: mỗi session bốc ngẫu nhiên 20 câu từ bank 200 câu (5 câu/hạng mục D/I/S/C), lưu vào `selectedQuestionIds`
+- **DISC random 20 câu**: mỗi session Fisher-Yates shuffle toàn bộ 200 câu rồi lấy 20 câu đầu (không trùng), lưu vào `selectedQuestionIds`. Mỗi câu có 4 đáp án A/B/C/D mapping D/I/S/C → 20 câu đã tự phân bổ điểm cho cả 4 chiều, không cần chia bucket theo dimension.
 - `parseSelectedQuestionIds()` helper đảm bảo type-safe khi đọc JSON field từ Prisma
 
 ### 4. Thần số học Pythagoras
@@ -182,7 +182,7 @@ Nền tảng đánh giá nhân sự của WEHA Group. User làm test (DISC, Logi
 | **Password trong URL phải encode** | Password có `@` là hợp lệ, nhưng khi đưa vào URI phải encode (`%40`) để parser không cắt sai phần host/userinfo. |
 | **Thêm `db:check` script** | Có một lệnh dùng đúng Prisma Client của app sẽ giúp phân biệt nhanh lỗi env, lỗi DB, và lỗi Prisma CLI/sandbox. |
 | **Prisma ưu tiên `.env.local`** | Tránh Prisma CLI vô tình đọc `.env` local Postgres khi app runtime đang chạy bằng Supabase trong `.env.local`. |
-| **DISC random 5 câu/hạng mục** | Bốc đều 5 câu mỗi D/I/S/C (tổng 20) thay vì random 20 bất kỳ, đảm bảo test đo đúng cả 4 chiều tính cách. |
+| **DISC random 20/200 không chia bucket** | Mỗi câu DISC có 4 đáp án A=D, B=I, C=S, D=C, mỗi đáp án +1 điểm cho đúng 1 chiều. Dù bốc câu nào, user vẫn chạm cả 4 chiều qua các đáp án. Vì vậy random 20/200 thuần (không chia 5/dimension) vẫn đảm bảo đo đủ D/I/S/C. Fisher-Yates shuffle + slice(0, 20) đảm bảo không trùng câu trong cùng session. |
 | **`parseSelectedQuestionIds()` thay vì `as string[]`** | Prisma JSON field trả về `JsonValue`, TypeScript cast không có runtime guarantee. Helper parse + validate tránh crash khi data không đúng format. |
 | **Numerology bar width = value/22 * 100** | Chỉ số numerology là số tuyệt đối (1-9, 11, 22), không phải %. Normalize bằng max master number 22 để bar hiển thị proportional. |
 | **Favicon dùng sharp `fit:contain` + transparent padding** | Logo WEHA là hình chữ nhật ngang (423×260). `fit:contain` giữ aspect ratio, `extend` thêm padding đều 4 phía tạo khung vuông — icon nhỏ gọn, không bị crop, nhìn cân đối trên tab. |

@@ -71,23 +71,40 @@ export async function startTest(data: StartTestInput) {
   if (existing) {
     const activeQuestionIdSet = new Set(activeQuestions.map((q) => q.id));
     const selectedIds = parseSelectedQuestionIds(existing.selectedQuestionIds);
+    // Legacy DISC session: được tạo trước khi áp dụng random 20 câu, hoặc
+    // selectedQuestionIds bị corrupt. Buộc tạo session mới.
     const isLegacyDiscSession =
       testType === "DISC" &&
       activeQuestions.length > DISC_QUESTIONS_PER_SESSION &&
       (!selectedIds || selectedIds.length !== DISC_QUESTIONS_PER_SESSION);
 
-    const hasStaleAnswers = existing.answers.some(
-      (answer) => !activeQuestionIdSet.has(answer.questionId)
-    );
-    const hasStaleSelectedIds =
-      !!selectedIds &&
-      selectedIds.some((questionId) => !activeQuestionIdSet.has(questionId));
-    const shouldAbandonForStaleSelection =
-      !!selectedIds &&
-      existing.answers.length === 0 &&
-      hasStaleSelectedIds;
+    // Đếm số câu đã trả lời thuộc bộ câu hỏi còn active.
+    const validAnsweredCount = existing.answers.filter((a) =>
+      activeQuestionIdSet.has(a.questionId)
+    ).length;
+    const staleAnsweredCount = existing.answers.length - validAnsweredCount;
 
-    if (hasStaleAnswers || shouldAbandonForStaleSelection || isLegacyDiscSession) {
+    // Với session đã chọn sẵn câu hỏi (DISC random), tính số câu còn active trong selectedIds.
+    const validSelectedCount = selectedIds
+      ? selectedIds.filter((id) => activeQuestionIdSet.has(id)).length
+      : null;
+
+    // Logic abandon:
+    //   1. Legacy DISC session (chưa có selectedIds theo format mới).
+    //   2. Session KHÔNG có selectedIds (LOGIC/SITUATION) nhưng có ít nhất 1 answer stale:
+    //      completeTest sẽ reject session này (vòng for chặn stale answers), user bị stuck
+    //      → phải abandon để tạo session mới sạch.
+    //   3. Session CÓ selectedIds (DISC random) nhưng toàn bộ selectedIds đã stale và user
+    //      chưa trả lời câu nào → không thể hiển thị câu hỏi nào để tiếp tục.
+    //
+    // Với DISC có selectedIds, stale answers KHÔNG cần abandon vì completeTest đã filter
+    // requiredQuestionIds theo activeQuestionIdSet (dòng 268-273).
+    const shouldAbandon =
+      isLegacyDiscSession ||
+      (selectedIds === null && staleAnsweredCount > 0) ||
+      (selectedIds !== null && validSelectedCount === 0 && existing.answers.length === 0);
+
+    if (shouldAbandon) {
       await prisma.testSession.update({
         where: { id: existing.id },
         data: { status: "ABANDONED" },

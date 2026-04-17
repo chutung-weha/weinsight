@@ -58,7 +58,7 @@ Mở [http://localhost:3000](http://localhost:3000).
   Ví dụ: `Weinsight@123` -> `Weinsight%40123`.
 - Thêm `sslmode=require` cho cả hai URL.
 
-App không còn fail build chỉ vì thiếu Google OAuth env, nhưng các route auth vẫn cần đủ biến môi trường để đăng nhập hoạt động đúng.
+`GOOGLE_CLIENT_ID` và `GOOGLE_CLIENT_SECRET` là optional tại module load: nếu thiếu, GoogleProvider không được kích hoạt — build + runtime chung không fail, chỉ route đăng nhập báo "không có provider". Tất cả route khác vẫn chạy bình thường. Khi thực sự cần đăng nhập, set cả 2 biến này trong `.env.local` hoặc env của container.
 
 ## Scripts
 

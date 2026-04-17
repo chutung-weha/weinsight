@@ -1,6 +1,10 @@
 generator client {
   provider      = "prisma-client-js"
-  binaryTargets = ["native", "debian-openssl-3.0.x"]
+  // native: dev (macOS/Linux local).
+  // debian-openssl-3.0.x: Docker base node:20-bookworm-slim (Debian 12) + Ubuntu 22.04+.
+  // debian-openssl-1.1.x: Ubuntu 20.04 và distro cũ (phòng trường hợp deploy cross-VPS).
+  // Nếu sau này chuyển sang Alpine base, thêm "linux-musl-openssl-3.0.x".
+  binaryTargets = ["native", "debian-openssl-3.0.x", "debian-openssl-1.1.x"]
 }
 
 datasource db {

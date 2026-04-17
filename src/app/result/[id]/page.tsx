@@ -254,11 +254,14 @@ export default function ResultPage() {
     if (!isDISC) return { letters: "", label: "" };
     const sorted = Object.entries(pct).sort(([, a], [, b]) => b - a);
     const top = sorted[0];
+    if (!top) return { letters: "", label: "Chưa đủ dữ liệu" };
     const second = sorted[1];
-    // Lấy dimension thứ 2 nếu gần sát top (cách <= 5%)
-    const letters = second && top[1] - second[1] <= 5
-      ? `${top[0]}${second[0]}`
-      : top[0];
+    // Lấy dimension thứ 2 nếu tồn tại và gần sát top (cách <= 5%).
+    // Guard second để tránh NaN khi chỉ có 1 dimension.
+    const letters =
+      second && typeof second[1] === "number" && top[1] - second[1] <= 5
+        ? `${top[0]}${second[0]}`
+        : top[0];
 
     const profileNames: Record<string, string> = {
       D: "Dẫn dắt",

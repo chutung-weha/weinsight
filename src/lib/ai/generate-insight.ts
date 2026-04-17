@@ -1,9 +1,24 @@
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { computeScoreMeta } from "@/lib/scoring";
 import { calculateAll } from "@/lib/numerology";
 import { LIFE_PATH } from "@/lib/numerology-descriptions";
 import type { DISCScores } from "@/types/test";
 import type { TestType } from "@prisma/client";
+
+// Validate totalScores đọc từ DB trước khi dùng — Prisma Json field không có
+// runtime guarantee về shape, cast trực tiếp sẽ bug nếu session là LOGIC/SITUATION.
+const discScoresSchema = z.object({
+  D: z.number().finite().nonnegative(),
+  I: z.number().finite().nonnegative(),
+  S: z.number().finite().nonnegative(),
+  C: z.number().finite().nonnegative(),
+});
+
+function parseDISCScores(value: unknown): DISCScores | null {
+  const result = discScoresSchema.safeParse(value);
+  return result.success ? result.data : null;
+}
 
 interface GenerateInsightInput {
   sessionId: string;
@@ -39,12 +54,23 @@ interface InsightEligibilityResult {
 }
 
 function sanitizeForPrompt(input: string | null | undefined, maxLength = 200): string {
-  if (!input) return "";
+  if (typeof input !== "string" || !input) return "";
   return input
     .replace(/[\x00-\x1F\x7F]/g, "")
     .replace(/\n/g, " ")
+    // Escape double quotes + backslashes để user input không thoát ra khỏi JSON-like
+    // prompt structure. Bảo vệ chống prompt injection dạng:
+    //   name = 'A", "role": "system'
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
     .trim()
     .slice(0, maxLength);
+}
+
+function redactError(error: unknown): string {
+  if (error instanceof Error) return error.name + ": " + error.message.slice(0, 200);
+  if (typeof error === "string") return error.slice(0, 200);
+  return "Unknown error";
 }
 
 const discProfiles = {
@@ -196,15 +222,19 @@ function buildFallbackInsight(input: {
   numerology: ReturnType<typeof calculateAll>;
 }): InsightResult {
   const disc = analyzeDisc(input.scores);
-  const dominantProfile = discProfiles[disc.dominant];
-  const secondaryProfile = discProfiles[disc.secondary];
+  // Guard: nếu DISCScores toàn 0 hoặc dominant không nằm trong discProfiles (không nên xảy ra
+  // vì analyzeDisc đã ép key D/I/S/C, nhưng defensive), fallback về D để tránh crash.
+  const dominantKey = (disc.dominant in discProfiles ? disc.dominant : "D") as keyof typeof discProfiles;
+  const secondaryKey = (disc.secondary in discProfiles ? disc.secondary : "I") as keyof typeof discProfiles;
+  const dominantProfile = discProfiles[dominantKey];
+  const secondaryProfile = discProfiles[secondaryKey];
   const lifePathData = LIFE_PATH[input.numerology.lifePath];
   const occupationFamily = inferOccupationFamily(input.occupation);
 
-  const discFit = occupationFamily.preferredDisc.includes(disc.dominant)
-    ? `Profile DISC trội ${disc.dominant} đang khá khớp với ${occupationFamily.label}.`
+  const discFit = occupationFamily.preferredDisc.includes(dominantKey)
+    ? `Profile DISC trội ${dominantKey} đang khá khớp với ${occupationFamily.label}.`
     : occupationFamily.preferredDisc.length > 0
-      ? `Nghề nghiệp hiện tại thiên về ${occupationFamily.label}, trong khi DISC trội lại là ${disc.dominant}; đây là điểm cần theo dõi để tránh lệch vai trò.`
+      ? `Nghề nghiệp hiện tại thiên về ${occupationFamily.label}, trong khi DISC trội lại là ${dominantKey}; đây là điểm cần theo dõi để tránh lệch vai trò.`
       : `Nghề nghiệp hiện tại chưa đủ dữ liệu để đối chiếu sâu theo cụm nghề, nên mức độ phù hợp được đánh giá ở mức định hướng.`;
 
   const lifePathFit = occupationFamily.preferredLifePaths.includes(input.numerology.lifePath)
@@ -212,7 +242,7 @@ function buildFallbackInsight(input: {
     : `Số chủ đạo ${input.numerology.lifePath} cho thấy động lực cốt lõi có thể khác kỳ vọng của vai trò hiện tại, nên cần thiết kế công việc phù hợp hơn.`;
 
   const strengths = uniqueStrings([
-    `Nổi bật ở chiều ${disc.dominant} (${dominantProfile.summary}).`,
+    `Nổi bật ở chiều ${dominantKey} (${dominantProfile.summary}).`,
     ...dominantProfile.strengths.map((item) => `Có xu hướng ${item}.`),
     ...(lifePathData?.strengths || []).map((item) => `Theo thần số học, điểm mạnh nền là ${item.toLowerCase()}.`),
   ], 4);
@@ -230,14 +260,14 @@ function buildFallbackInsight(input: {
   ], 4);
 
   const developmentPlan = uniqueStrings([
-    `Trong 30-60 ngày, giao việc bám vào thế mạnh ${discProfiles[disc.dominant].title} nhưng có KPI rõ để kiểm chứng độ bền.`,
+    `Trong 30-60 ngày, giao việc bám vào thế mạnh ${dominantProfile.title} nhưng có KPI rõ để kiểm chứng độ bền.`,
     `Trong 60-90 ngày, thêm một mục tiêu phát triển ở chiều ${disc.weakest} để tránh lệch một màu hành vi.`,
     `Thiết kế công việc theo hướng ${occupationFamily.label}, nhưng vẫn giữ không gian cho động lực lõi của số chủ đạo ${input.numerology.lifePath}.`,
   ], 4);
 
   return {
-    summary: `${input.candidateName} có profile DISC trội ${disc.dominant}/${disc.secondary}, kết hợp với số chủ đạo ${input.numerology.lifePath}. Tổng thể cho thấy phong cách làm việc ${dominantProfile.summary}, và mức phù hợp với nghề nghiệp hiện tại "${input.occupation}" ở mức ${occupationFamily.preferredDisc.includes(disc.dominant) ? "tốt" : "cần hiệu chỉnh"}.`,
-    personalityProfile: `DISC cho thấy chiều trội là ${disc.dominant} (${dominantProfile.summary}), còn chiều phụ là ${disc.secondary} (${secondaryProfile.summary}). Điều này cho thấy cách làm việc tự nhiên của ${input.candidateName} nghiêng về ${dominantProfile.summary}, nhưng vẫn có lớp bổ trợ từ ${secondaryProfile.summary}. ${discFit}`,
+    summary: `${input.candidateName} có profile DISC trội ${dominantKey}/${secondaryKey}, kết hợp với số chủ đạo ${input.numerology.lifePath}. Tổng thể cho thấy phong cách làm việc ${dominantProfile.summary}, và mức phù hợp với nghề nghiệp hiện tại "${input.occupation}" ở mức ${occupationFamily.preferredDisc.includes(dominantKey) ? "tốt" : "cần hiệu chỉnh"}.`,
+    personalityProfile: `DISC cho thấy chiều trội là ${dominantKey} (${dominantProfile.summary}), còn chiều phụ là ${secondaryKey} (${secondaryProfile.summary}). Điều này cho thấy cách làm việc tự nhiên của ${input.candidateName} nghiêng về ${dominantProfile.summary}, nhưng vẫn có lớp bổ trợ từ ${secondaryProfile.summary}. ${discFit}`,
     numerologyInsight: `Số chủ đạo ${input.numerology.lifePath}${lifePathData ? ` - ${lifePathData.title}` : ""} cho thấy động lực lõi thiên về ${lifePathData?.summary?.toLowerCase() || "phát triển bản thân và tạo giá trị"}. Chỉ số sứ mệnh ${input.numerology.expression}, linh hồn ${input.numerology.soulUrge}, và nhân cách ${input.numerology.personality} bổ sung góc nhìn về cách thể hiện năng lực ra bên ngoài. ${lifePathFit}`,
     strengths,
     improvements,
@@ -280,7 +310,10 @@ export async function generateInsight({ sessionId }: GenerateInsightInput): Prom
     throw new Error(eligibility.reason || "Session không đủ điều kiện tạo AI insight.");
   }
 
-  const scores = session.totalScores as unknown as DISCScores;
+  const scores = parseDISCScores(session.totalScores);
+  if (!scores) {
+    throw new Error("DISC scores không hợp lệ hoặc thiếu.");
+  }
   const candidateName = sanitizeForPrompt(session.candidateName || session.user.name || "Ứng viên", 100);
   const occupation = sanitizeForPrompt(session.occupation, 100);
   const sessionDob = session.dateOfBirth as Date;
@@ -392,14 +425,14 @@ Trả lời bằng JSON thuần với đúng format:
     });
   } catch (error) {
     clearTimeout(timeout);
-    console.error("Groq API timeout or network error:", error);
+    console.error("[generate-insight] Groq fetch failed:", redactError(error));
     return { insight: buildFallbackInsight({ scores, candidateName, occupation, numerology }), config };
   } finally {
     clearTimeout(timeout);
   }
 
   if (!response.ok) {
-    console.error("Groq API error:", response.status);
+    console.error("[generate-insight] Groq API non-2xx:", response.status);
     return { insight: buildFallbackInsight({ scores, candidateName, occupation, numerology }), config };
   }
 
@@ -407,7 +440,7 @@ Trả lời bằng JSON thuần với đúng format:
   try {
     result = await response.json();
   } catch {
-    console.error("Groq response is not valid JSON, using fallback");
+    console.error("[generate-insight] Groq response is not valid JSON, using fallback");
     return { insight: buildFallbackInsight({ scores, candidateName, occupation, numerology }), config };
   }
 
@@ -415,12 +448,23 @@ Trả lời bằng JSON thuần với đúng format:
 
   try {
     const parsed = normalizeInsightResult(JSON.parse(content) as Partial<InsightResult>);
-    if (!parsed.summary || !parsed.recommendation) {
+    // Siết required fields: summary, recommendation, personalityProfile, numerologyInsight
+    // đều là text quan trọng user sẽ đọc. Arrays strengths/improvements cần >= 1 item.
+    const missingText =
+      !parsed.summary ||
+      !parsed.recommendation ||
+      !parsed.personalityProfile ||
+      !parsed.numerologyInsight;
+    const missingArrays =
+      parsed.strengths.length === 0 ||
+      parsed.improvements.length === 0 ||
+      parsed.suitableRoles.length === 0;
+    if (missingText || missingArrays) {
       throw new Error("Insight content is incomplete.");
     }
     return { insight: parsed, config };
   } catch {
-    console.error("Failed to parse Groq response content, using fallback");
+    console.error("[generate-insight] Failed to parse Groq content, using fallback");
     return { insight: buildFallbackInsight({ scores, candidateName, occupation, numerology }), config };
   }
 }

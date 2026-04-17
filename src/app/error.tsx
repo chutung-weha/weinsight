@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+
 export default function GlobalError({
   error,
   reset,
@@ -7,6 +9,15 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  useEffect(() => {
+    // Log digest + context để trace trên server, không hiển thị error.message
+    // ra UI (tránh lộ stack trace / đường dẫn file / chi tiết DB).
+    const path = typeof window !== "undefined" ? window.location.pathname : "";
+    console.error(
+      `[error-boundary][global] ${new Date().toISOString()} path=${path} digest=${error.digest || "none"}`
+    );
+  }, [error]);
+
   return (
     <div className="min-h-screen flex items-center justify-center px-6">
       <div className="glass p-10 text-center max-w-md">
@@ -17,8 +28,13 @@ export default function GlobalError({
         </div>
         <h2 className="text-xl font-bold mb-2">Đã xảy ra lỗi</h2>
         <p className="text-sm text-slate-400 mb-6">
-          {error.message || "Có lỗi không mong muốn. Vui lòng thử lại."}
+          Có lỗi không mong muốn. Vui lòng thử lại.
         </p>
+        {error.digest && (
+          <p className="text-[11px] text-slate-500 mb-4 font-mono">
+            Mã lỗi: {error.digest}
+          </p>
+        )}
         <button
           onClick={reset}
           className="gradient-bg text-[#0B1120] px-6 py-2.5 rounded-full text-sm font-semibold hover:shadow-lg hover:shadow-cyan-500/25 hover:-translate-y-0.5 transition-all"

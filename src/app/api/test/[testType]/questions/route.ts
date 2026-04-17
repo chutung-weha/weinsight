@@ -10,7 +10,7 @@ export async function GET(
   { params }: { params: Promise<{ testType: string }> }
 ) {
   const session = await getServerSession(authOptions);
-  if (!session?.user) {
+  if (!session?.user?.id) {
     return NextResponse.json(
       { success: false, error: "Chưa đăng nhập" },
       { status: 401 }

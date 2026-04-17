@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
 
 export default function TestError({
@@ -9,6 +10,13 @@ export default function TestError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  useEffect(() => {
+    const path = typeof window !== "undefined" ? window.location.pathname : "";
+    console.error(
+      `[error-boundary][test] ${new Date().toISOString()} path=${path} digest=${error.digest || "none"}`
+    );
+  }, [error]);
+
   return (
     <div className="min-h-[calc(100vh-60px)] flex items-center justify-center px-6">
       <div className="glass p-10 text-center max-w-md">
@@ -19,8 +27,13 @@ export default function TestError({
         </div>
         <h2 className="text-xl font-bold mb-2">Lỗi bài test</h2>
         <p className="text-sm text-slate-400 mb-6">
-          {error.message || "Không thể tải bài test. Vui lòng thử lại."}
+          Không thể tải bài test. Vui lòng thử lại.
         </p>
+        {error.digest && (
+          <p className="text-[11px] text-slate-500 mb-4 font-mono">
+            Mã lỗi: {error.digest}
+          </p>
+        )}
         <div className="flex gap-3 justify-center">
           <button
             onClick={reset}

@@ -4,7 +4,11 @@ import { authOptions } from "@/lib/auth";
 
 export async function getCurrentUser() {
   const session = await getServerSession(authOptions);
-  return session?.user ?? null;
+  // Yêu cầu user object có id rõ ràng. NextAuth có thể trả session.user = {...}
+  // chỉ với name/email/image (không có id) nếu token bị invalidate → ta coi
+  // như null để caller check `if (!user)` hoạt động đúng.
+  if (!session?.user?.id) return null;
+  return session.user;
 }
 
 export async function requireAuth() {

@@ -5,6 +5,14 @@ import { prisma } from "@/lib/prisma";
 import { computeScoreMeta } from "@/lib/scoring";
 import { getInsightEligibility } from "@/lib/ai/generate-insight";
 
+// Header chống cache cho mọi response chứa PII (tên, DOB, scores, insight).
+// Ngăn browser bfcache, proxy/CDN middlebox, và share machine scenarios
+// giữ lại data nhạy cảm.
+const NO_STORE_HEADERS = {
+  "Cache-Control": "private, no-store, no-cache, must-revalidate",
+  "Pragma": "no-cache",
+} as const;
+
 function getAnsweredQuestionIds(answers: Array<{ questionId: string }>): string[] {
   return [...new Set(answers.map((answer) => answer.questionId).filter(Boolean))];
 }
@@ -65,10 +73,10 @@ export async function GET(
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
   const session = await getServerSession(authOptions);
-  if (!session?.user) {
+  if (!session?.user?.id) {
     return NextResponse.json(
       { success: false, error: "Chưa đăng nhập" },
-      { status: 401 }
+      { status: 401, headers: NO_STORE_HEADERS }
     );
   }
 
@@ -91,7 +99,7 @@ export async function GET(
   if (!testSession) {
     return NextResponse.json(
       { success: false, error: "Không tìm thấy phiên test" },
-      { status: 404 }
+      { status: 404, headers: NO_STORE_HEADERS }
     );
   }
 
@@ -100,7 +108,7 @@ export async function GET(
   if (!isOwner && !isAdmin) {
     return NextResponse.json(
       { success: false, error: "Không có quyền xem kết quả này" },
-      { status: 403 }
+      { status: 403, headers: NO_STORE_HEADERS }
     );
   }
 
@@ -145,7 +153,14 @@ export async function GET(
         ? (() => {
             const ai = testSession.aiInsight;
             let extra: Record<string, unknown> = {};
-            try { extra = JSON.parse(ai.fullResponse); } catch { /* ignore */ }
+            try {
+              extra = JSON.parse(ai.fullResponse);
+            } catch {
+              // Không throw, chỉ log. UI sẽ hiển thị summary/recommendation từ field
+              // riêng, mất personalityProfile/numerologyInsight — admin cần biết để
+              // điều tra session bị corrupt.
+              console.error(`[result-api] fullResponse parse failed for session=${sessionId}`);
+            }
             return {
               summary: extractText(ai.summary) || "",
               personalityProfile: extractText(extra.personalityProfile),
@@ -162,5 +177,5 @@ export async function GET(
           })()
         : null,
     },
-  });
+  }, { headers: NO_STORE_HEADERS });
 }

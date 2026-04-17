@@ -3,13 +3,20 @@ import GoogleProvider from "next-auth/providers/google";
 import { prisma } from "@/lib/prisma";
 import { env } from "@/lib/env";
 
+// Chỉ kích hoạt GoogleProvider nếu có đủ credentials. Nếu thiếu, providers = []
+// → user không đăng nhập được nhưng app không crash khi load auth module
+// (ví dụ middleware, result API đều import authOptions).
+const googleEnabled = !!env.GOOGLE_CLIENT_ID && !!env.GOOGLE_CLIENT_SECRET;
+
 export const authOptions: NextAuthOptions = {
-  providers: [
-    GoogleProvider({
-      clientId: env.GOOGLE_CLIENT_ID,
-      clientSecret: env.GOOGLE_CLIENT_SECRET,
-    }),
-  ],
+  providers: googleEnabled
+    ? [
+        GoogleProvider({
+          clientId: env.GOOGLE_CLIENT_ID,
+          clientSecret: env.GOOGLE_CLIENT_SECRET,
+        }),
+      ]
+    : [],
 
   session: {
     strategy: "jwt",
@@ -124,10 +131,14 @@ export const authOptions: NextAuthOptions = {
     },
 
     async session({ session, token }) {
-      if (token.id && !token.disabled) {
-        session.user.id = token.id as string;
-        session.user.role = (token.role as "ADMIN" | "HR" | "CANDIDATE") ?? "CANDIDATE";
+      // Nếu token không có id (chưa login) hoặc đã disabled, trả session
+      // không có user — getCurrentUser() sẽ coi là null, các route/action
+      // không vô tình đi tiếp với user.id = undefined.
+      if (!token.id || token.disabled) {
+        return { ...session, user: undefined as never };
       }
+      session.user.id = token.id as string;
+      session.user.role = (token.role as "ADMIN" | "HR" | "CANDIDATE") ?? "CANDIDATE";
       return session;
     },
   },

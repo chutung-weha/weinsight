@@ -8,7 +8,10 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: "*",
         allow: "/",
-        disallow: ["/admin/", "/api/", "/result/", "/ho-so/", "/history/"],
+        // Chỉ disallow các route đã implement và cần chặn crawl.
+        // `/ho-so/` và `/history/` chưa có — không đưa vào để tránh Google
+        // blacklist trước khi launch.
+        disallow: ["/admin/", "/api/", "/result/"],
       },
     ],
     sitemap: `${BASE_URL}/sitemap.xml`,
