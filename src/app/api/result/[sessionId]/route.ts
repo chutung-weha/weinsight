@@ -20,7 +20,11 @@ function getAnsweredQuestionIds(answers: Array<{ questionId: string }>): string[
 function extractText(value: unknown): string | null {
   if (typeof value === "string") {
     const normalized = value.trim();
-    return normalized || null;
+    // Insight cũ trước fix toInsightText có thể bị lưu literal "[object Object]"
+    // vào DB. Không thể recover — trả null để UI hiện fallback/ẩn field thay
+    // vì hiển thị chuỗi rác.
+    if (!normalized || normalized === "[object Object]") return null;
+    return normalized;
   }
 
   if (typeof value === "number" || typeof value === "boolean") {

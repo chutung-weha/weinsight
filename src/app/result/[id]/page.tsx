@@ -433,7 +433,7 @@ export default function ResultPage() {
                 {insight.personalityProfile && (
                   <div className="glass-sm p-5 bg-cyan-500/5 border-cyan-500/15 mb-5">
                     <div className="text-xs font-semibold text-cyan-300 mb-2">Phân tích tính cách (DISC + Thần số học)</div>
-                    <p className="text-sm text-slate-300 leading-relaxed">{String(insight.personalityProfile || "")}</p>
+                    <p className="text-sm text-slate-300 leading-relaxed">{insight.personalityProfile}</p>
                   </div>
                 )}
 
@@ -497,10 +497,12 @@ export default function ResultPage() {
                 )}
 
                 {/* Khuyến nghị */}
-                <div className="glass-sm p-5 bg-violet-500/5 border-violet-500/15">
-                  <div className="text-xs font-semibold text-violet-300 mb-2">Khuyến nghị tổng hợp</div>
-                  <p className="text-sm text-slate-300 leading-relaxed">{String(insight.recommendation || "")}</p>
-                </div>
+                {insight.recommendation && (
+                  <div className="glass-sm p-5 bg-violet-500/5 border-violet-500/15">
+                    <div className="text-xs font-semibold text-violet-300 mb-2">Khuyến nghị tổng hợp</div>
+                    <p className="text-sm text-slate-300 leading-relaxed">{insight.recommendation}</p>
+                  </div>
+                )}
               </>
             ) : (
               <div className="text-center py-8 text-slate-500">

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getInsightEligibility } from "./generate-insight";
+import { getInsightEligibility, toInsightText } from "./generate-insight";
 
 describe("getInsightEligibility", () => {
   const validInput = {
@@ -59,5 +59,54 @@ describe("getInsightEligibility", () => {
   it("không eligible khi occupation chỉ có whitespace", () => {
     const result = getInsightEligibility({ ...validInput, occupation: "   " });
     expect(result.eligible).toBe(false);
+  });
+});
+
+describe("toInsightText", () => {
+  it("trả string đã trim", () => {
+    expect(toInsightText("  hello  ")).toBe("hello");
+  });
+
+  it("trả rỗng cho null/undefined", () => {
+    expect(toInsightText(null)).toBe("");
+    expect(toInsightText(undefined)).toBe("");
+  });
+
+  it("extract field text từ object", () => {
+    expect(toInsightText({ text: "abc" })).toBe("abc");
+  });
+
+  it("extract field content từ object", () => {
+    expect(toInsightText({ content: "xyz" })).toBe("xyz");
+  });
+
+  it("extract preferred key đầu tiên tìm được (text ưu tiên trước content)", () => {
+    expect(toInsightText({ content: "content-val", text: "text-val" })).toBe("text-val");
+  });
+
+  it("không trả '[object Object]' cho object bất kỳ", () => {
+    const result = toInsightText({ foo: "bar", baz: "qux" });
+    expect(result).not.toBe("[object Object]");
+    expect(result).toContain("bar");
+  });
+
+  it("xử lý array", () => {
+    expect(toInsightText(["a", "b", "c"])).toBe("a b c");
+  });
+
+  it("xử lý number/boolean", () => {
+    expect(toInsightText(42)).toBe("42");
+    expect(toInsightText(true)).toBe("true");
+  });
+
+  it("chống infinite recursion với nested object sâu", () => {
+    const deeply: Record<string, unknown> = {};
+    let cur = deeply;
+    for (let i = 0; i < 10; i++) {
+      const next: Record<string, unknown> = {};
+      cur.nested = next;
+      cur = next;
+    }
+    expect(() => toInsightText(deeply)).not.toThrow();
   });
 });

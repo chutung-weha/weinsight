@@ -198,16 +198,48 @@ function uniqueStrings(items: string[], limit = 6) {
   return [...new Set(items.map((item) => item.trim()).filter(Boolean))].slice(0, limit);
 }
 
+// Trích text an toàn từ unknown. Groq đôi khi trả field text dưới dạng
+// object {text: "..."}, {content: "..."} thay vì string — nếu dùng String()
+// sẽ ra "[object Object]" rồi lưu thẳng vào DB String field, không recover được.
+// Helper này extract text từ nested object trước khi ép chuỗi.
+export function toInsightText(val: unknown, maxDepth = 3): string {
+  if (val === null || val === undefined) return "";
+  if (typeof val === "string") return val.trim();
+  if (typeof val === "number" || typeof val === "boolean") return String(val);
+  if (maxDepth <= 0) return "";
+  if (Array.isArray(val)) {
+    return val
+      .map((item) => toInsightText(item, maxDepth - 1))
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+  }
+  if (typeof val === "object") {
+    const record = val as Record<string, unknown>;
+    // Thử các key phổ biến Groq hay dùng
+    for (const key of ["text", "content", "summary", "description", "value", "message"]) {
+      const extracted = toInsightText(record[key], maxDepth - 1);
+      if (extracted) return extracted;
+    }
+    // Fallback: join tất cả value (phòng khi Groq trả object lạ)
+    const parts = Object.values(record)
+      .map((item) => toInsightText(item, maxDepth - 1))
+      .filter(Boolean);
+    return parts.join(" ").trim();
+  }
+  return "";
+}
+
 function normalizeInsightResult(input: Partial<InsightResult>): InsightResult {
   return {
-    summary: String(input.summary || "").trim(),
-    personalityProfile: String(input.personalityProfile || "").trim(),
-    numerologyInsight: String(input.numerologyInsight || "").trim(),
-    strengths: uniqueStrings(Array.isArray(input.strengths) ? input.strengths.map(String) : [], 5),
-    improvements: uniqueStrings(Array.isArray(input.improvements) ? input.improvements.map(String) : [], 5),
-    suitableRoles: uniqueStrings(Array.isArray(input.suitableRoles) ? input.suitableRoles.map(String) : [], 5),
-    developmentPlan: uniqueStrings(Array.isArray(input.developmentPlan) ? input.developmentPlan.map(String) : [], 5),
-    recommendation: String(input.recommendation || "").trim(),
+    summary: toInsightText(input.summary),
+    personalityProfile: toInsightText(input.personalityProfile),
+    numerologyInsight: toInsightText(input.numerologyInsight),
+    strengths: uniqueStrings(Array.isArray(input.strengths) ? input.strengths.map((i) => toInsightText(i)) : [], 5),
+    improvements: uniqueStrings(Array.isArray(input.improvements) ? input.improvements.map((i) => toInsightText(i)) : [], 5),
+    suitableRoles: uniqueStrings(Array.isArray(input.suitableRoles) ? input.suitableRoles.map((i) => toInsightText(i)) : [], 5),
+    developmentPlan: uniqueStrings(Array.isArray(input.developmentPlan) ? input.developmentPlan.map((i) => toInsightText(i)) : [], 5),
+    recommendation: toInsightText(input.recommendation),
   };
 }
 
