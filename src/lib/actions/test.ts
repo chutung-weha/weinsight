@@ -324,8 +324,11 @@ export async function completeTest(data: CompleteTestInput) {
     };
   }
 
-  // Chỉ tính điểm từ câu hỏi trong danh sách yêu cầu
-  const totalScores: Record<string, number> = {};
+  // Chỉ tính điểm từ câu hỏi trong danh sách yêu cầu.
+  // Với DISC, init đủ 4 key D/I/S/C = 0 để UI luôn render đủ 4 bar dimension
+  // (kể cả khi user chỉ chọn 1 chiều duy nhất trong toàn bộ 20 câu).
+  const totalScores: Record<string, number> =
+    session.testType === "DISC" ? { D: 0, I: 0, S: 0, C: 0 } : {};
   for (const testAnswer of session.answers) {
     if (!requiredQuestionIds.has(testAnswer.questionId)) continue;
     const scores = (testAnswer.answer.scores as Record<string, number>) || {};
