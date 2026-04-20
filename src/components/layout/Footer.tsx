@@ -8,7 +8,7 @@ const productLinks = [
 
 const ecosystemLinks = [
   { href: "https://wehagroup.vn", label: "WEHA GROUP" },
-  { href: "https://wehagroup.vn", label: "WEHA TECH" },
+  { href: "https://wehatech.vn", label: "WEHA TECH" },
   { href: "https://wehagroup.vn", label: "WEHA AI" },
 ];
 
